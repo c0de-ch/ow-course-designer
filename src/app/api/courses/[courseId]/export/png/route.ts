@@ -1,0 +1,86 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { encodeCourseData } from "@/lib/course-encoder";
+import { CourseData } from "@/store/courseStore";
+
+async function getPuppeteer() {
+  const puppeteer = await import("puppeteer");
+  return puppeteer.default;
+}
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ courseId: string }> }
+) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+
+  const userId = (session.user as { id: string }).id;
+  const { courseId } = await params;
+
+  const course = await prisma.course.findFirst({
+    where: { id: courseId, userId },
+    include: { elements: { orderBy: { order: "asc" } } },
+  });
+
+  if (!course) {
+    return new NextResponse("Not found", { status: 404 });
+  }
+
+  const courseData: CourseData = {
+    id: course.id,
+    name: course.name,
+    lakeLabel: course.lakeLabel,
+    lakeLatLng: course.lakeLatLng,
+    zoomLevel: course.zoomLevel,
+    distanceKm: course.distanceKm,
+    elements: course.elements.map((el) => ({
+      id: el.id,
+      type: el.type as CourseData["elements"][0]["type"],
+      lat: el.lat,
+      lng: el.lng,
+      order: el.order,
+      label: el.label,
+      metadata: el.metadata,
+    })),
+  };
+
+  const snapshot = await prisma.courseSnapshot.create({
+    data: { courseId, payload: encodeCourseData(courseData) },
+  });
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const printUrl = `${appUrl}/share/${snapshot.token}?print=1`;
+
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  const puppeteer = await getPuppeteer();
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    executablePath,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 900 });
+    await page.goto(printUrl, { waitUntil: "networkidle0", timeout: 30000 });
+    await page.waitForSelector("#map-ready", { timeout: 20000 });
+
+    const screenshot = await page.screenshot({ type: "png", fullPage: false });
+
+    const filename = `${course.name.replace(/[^a-z0-9]/gi, "_")}.png`;
+    return new NextResponse(Buffer.from(screenshot), {
+      headers: {
+        "Content-Type": "image/png",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+      },
+    });
+  } finally {
+    await browser.close();
+  }
+}
