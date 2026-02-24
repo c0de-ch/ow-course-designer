@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { tracer } from "@/lib/otel/tracer";
 
 async function getCourseForUser(courseId: string, userId: string) {
   return prisma.course.findFirst({

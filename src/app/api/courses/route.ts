@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { tracer } from "@/lib/otel/tracer";
+import { coursesCreatedCounter } from "@/lib/otel/metrics";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -56,6 +58,8 @@ export async function POST(req: NextRequest) {
       },
       select: { id: true, name: true, lakeLabel: true, distanceKm: true, createdAt: true, updatedAt: true },
     });
+
+    coursesCreatedCounter.add(1);
 
     return NextResponse.json(course, { status: 201 });
   } catch (err) {
