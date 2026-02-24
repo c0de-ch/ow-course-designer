@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Bump version in package.json
+        run: npm version ${{ inputs.version }} --no-git-tag-version
+
+      - name: Commit version bump
+        run: |
+          git add package.json
+          git commit -m "chore: bump version to v${{ inputs.version }}"
+
+      - name: Create tag and push
+        run: |
+          git tag "v${{ inputs.version }}"
+          git push origin HEAD "v${{ inputs.version }}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "v${{ inputs.version }}" --generate-notes --title "v${{ inputs.version }}"
