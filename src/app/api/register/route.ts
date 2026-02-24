@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { sendVerificationCode } from "@/lib/mail";
+
+function generateCode(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -15,24 +20,60 @@ export async function POST(req: NextRequest) {
     const { email, password, name } = registerSchema.parse(body);
 
     const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) {
+    if (existing && existing.emailVerified) {
       return NextResponse.json(
         { error: "Email already registered" },
         { status: 409 }
       );
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
-    const user = await prisma.user.create({
-      data: { email, passwordHash, name: name ?? null },
-      select: { id: true, email: true, name: true },
+    let userId: string;
+
+    if (existing && !existing.emailVerified) {
+      // User registered but never verified — update password & name, resend code
+      const passwordHash = await bcrypt.hash(password, 12);
+      await prisma.user.update({
+        where: { id: existing.id },
+        data: { passwordHash, name: name ?? existing.name },
+      });
+      userId = existing.id;
+    } else {
+      // New user
+      const passwordHash = await bcrypt.hash(password, 12);
+      const user = await prisma.user.create({
+        data: { email, passwordHash, name: name ?? null },
+      });
+      userId = user.id;
+    }
+
+    // Delete any existing codes for this user
+    await prisma.emailVerificationCode.deleteMany({ where: { userId } });
+
+    // Generate and store verification code
+    const code = generateCode();
+    await prisma.emailVerificationCode.create({
+      data: {
+        userId,
+        code,
+        expires: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+      },
     });
 
-    return NextResponse.json(user, { status: 201 });
+    // Send verification email
+    await sendVerificationCode(email, code);
+
+    return NextResponse.json(
+      { message: "Verification code sent", email },
+      { status: 201 }
+    );
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors }, { status: 400 });
     }
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("Registration error:", err);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }

@@ -27,6 +27,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
+  const verified = searchParams.get("verified");
   const [error, setError] = useState<string | null>(null);
 
   const {
@@ -44,7 +45,13 @@ function LoginForm() {
       callbackUrl,
     });
     if (result?.error) {
-      setError("Invalid email or password");
+      if (result.error.includes("EMAIL_NOT_VERIFIED")) {
+        setError(
+          "Your email is not verified. Please check your inbox or register again to receive a new code."
+        );
+      } else {
+        setError("Invalid email or password");
+      }
     } else {
       router.push(callbackUrl);
     }
@@ -56,13 +63,22 @@ function LoginForm() {
         <div className="card-body gap-4">
           <h1 className="card-title text-2xl justify-center">Sign in</h1>
 
+          {verified && (
+            <div className="alert alert-success">
+              <span>Email verified! You can now sign in.</span>
+            </div>
+          )}
+
           {error && (
             <div className="alert alert-error">
               <span>{error}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="flex flex-col gap-3"
+          >
             <div className="form-group">
               <label className="form-label" htmlFor="email">
                 Email
@@ -75,7 +91,9 @@ function LoginForm() {
                 {...register("email")}
               />
               {errors.email && (
-                <span className="form-helper text-error">{errors.email.message}</span>
+                <span className="form-helper text-error">
+                  {errors.email.message}
+                </span>
               )}
             </div>
 
@@ -91,7 +109,9 @@ function LoginForm() {
                 {...register("password")}
               />
               {errors.password && (
-                <span className="form-helper text-error">{errors.password.message}</span>
+                <span className="form-helper text-error">
+                  {errors.password.message}
+                </span>
               )}
             </div>
 
@@ -100,7 +120,7 @@ function LoginForm() {
               disabled={isSubmitting}
               className="btn btn-primary btn-block mt-2"
             >
-              {isSubmitting ? "Signing in…" : "Sign in"}
+              {isSubmitting ? "Signing in..." : "Sign in"}
             </button>
           </form>
 
