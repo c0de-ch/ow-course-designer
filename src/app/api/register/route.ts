@@ -59,11 +59,17 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Send verification email
-    await sendVerificationCode(email, code);
+    // Send verification email (non-critical — user can resend)
+    let emailSent = true;
+    try {
+      await sendVerificationCode(email, code);
+    } catch (mailErr) {
+      emailSent = false;
+      console.error("Failed to send verification email:", mailErr);
+    }
 
     return NextResponse.json(
-      { message: "Verification code sent", email },
+      { message: "Verification code sent", email, emailSent },
       { status: 201 }
     );
   } catch (err) {
