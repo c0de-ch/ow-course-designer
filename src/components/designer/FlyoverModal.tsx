@@ -43,9 +43,11 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
       return;
     }
 
-    const routeElements = courseData.elements
+    // All visible elements (for markers) and route elements (for polyline/path)
+    const visibleElements = courseData.elements
       .filter((el) => el.type !== "rescue_zone")
       .sort((a, b) => a.order - b.order);
+    const routeElements = visibleElements.filter((el) => el.type !== "feeding_platform");
 
     // Center on start element, or first element, or lake
     const startEl = routeElements.find((el) => el.type === "start");
@@ -73,10 +75,10 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
     const map = new google.maps.Map(mapDivRef.current, opts);
     mapRef.current = map;
 
-    // Fit bounds to all route elements with 500m padding
-    if (routeElements.length >= 2) {
+    // Fit bounds to all visible elements with 500m padding
+    if (visibleElements.length >= 2) {
       const bounds = new google.maps.LatLngBounds();
-      routeElements.forEach((el) => bounds.extend({ lat: el.lat, lng: el.lng }));
+      visibleElements.forEach((el) => bounds.extend({ lat: el.lat, lng: el.lng }));
 
       // Extend bounds by ~500m on each side
       // 500m ≈ 0.0045° latitude, longitude varies by cos(lat)
@@ -108,8 +110,8 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
         });
       }
 
-      // Draw markers
-      routeElements.forEach((el) => {
+      // Draw markers (all visible elements including feeding platforms)
+      visibleElements.forEach((el) => {
         const svgHtml = getMarkerSvg(el.type, false, el.metadata);
         const overlay = new google.maps.OverlayView();
         overlay.onAdd = function () {
@@ -162,17 +164,18 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
       swimmerOverlay.setMap(map);
       swimmerOverlayRef.current = swimmerOverlay;
 
-      // Build camera path
+      // Build camera path (with laps)
       const routePts = routeElements.map((el) => ({
         lat: el.lat,
         lng: el.lng,
       }));
-      framesRef.current = buildCameraPath(routePts, duration);
+      const laps = courseData.laps ?? 1;
+      framesRef.current = buildCameraPath(routePts, duration, 30, laps);
 
       if (framesRef.current.length === 0) {
         setStatusMsg("Need at least 2 route points for flyover");
       } else {
-        setStatusMsg(`Ready — ${duration}s flyover`);
+        setStatusMsg(`Ready — ${duration}s, ${laps} lap${laps > 1 ? "s" : ""}`);
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -181,15 +184,16 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
   // Rebuild frames when duration changes
   useEffect(() => {
     if (!mapReady) return;
-    const routeElements = courseData.elements
-      .filter((el) => el.type !== "rescue_zone")
+    const routeEls = courseData.elements
+      .filter((el) => el.type !== "rescue_zone" && el.type !== "feeding_platform")
       .sort((a, b) => a.order - b.order);
-    const routePts = routeElements.map((el) => ({ lat: el.lat, lng: el.lng }));
-    framesRef.current = buildCameraPath(routePts, duration);
+    const routePts = routeEls.map((el) => ({ lat: el.lat, lng: el.lng }));
+    const laps = courseData.laps ?? 1;
+    framesRef.current = buildCameraPath(routePts, duration, 30, laps);
     if (framesRef.current.length > 0) {
-      setStatusMsg(`Ready — ${duration}s flyover`);
+      setStatusMsg(`Ready — ${duration}s, ${laps} lap${laps > 1 ? "s" : ""}`);
     }
-  }, [duration, mapReady, courseData.elements]);
+  }, [duration, mapReady, courseData.elements, courseData.laps]);
 
   const moveSwimmer = useCallback((pos: google.maps.LatLngLiteral) => {
     swimmerPosRef.current = new google.maps.LatLng(pos.lat, pos.lng);
@@ -407,6 +411,32 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
           {!mapReady && (
             <div className="absolute inset-0 flex items-center justify-center bg-base-200">
               <span className="loading loading-spinner loading-lg" />
+            </div>
+          )}
+
+          {/* Branding overlay (top-left) */}
+          {(courseData.raceLabel || courseData.raceLogo) && (
+            <div className="absolute top-3 left-3 z-10 bg-white/80 backdrop-blur-sm rounded-lg p-2 max-w-[200px] pointer-events-none">
+              {courseData.raceLogo && (
+                <img src={courseData.raceLogo} alt="Race logo" className="max-h-12 max-w-full object-contain mb-1" />
+              )}
+              {courseData.raceLabel && (
+                <div className="text-sm font-semibold text-gray-800 leading-tight">{courseData.raceLabel}</div>
+              )}
+            </div>
+          )}
+
+          {/* Distance + laps overlay (bottom-right) */}
+          {courseData.distanceKm != null && courseData.distanceKm > 0 && (
+            <div className="absolute bottom-3 right-3 z-10 bg-black/70 text-white px-4 py-2 rounded-lg text-right pointer-events-none">
+              {(courseData.laps ?? 1) > 1 ? (
+                <>
+                  <div className="text-lg font-bold">{(courseData.distanceKm * (courseData.laps ?? 1)).toFixed(2)} km</div>
+                  <div className="text-xs opacity-80">{courseData.distanceKm.toFixed(2)} km × {courseData.laps} laps</div>
+                </>
+              ) : (
+                <div className="text-lg font-bold">{courseData.distanceKm.toFixed(2)} km</div>
+              )}
             </div>
           )}
         </div>

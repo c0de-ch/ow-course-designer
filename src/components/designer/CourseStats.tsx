@@ -6,7 +6,7 @@ export function CourseStats() {
   const { courseData, setLaps } = useCourseStore();
   const { distanceKm, elements, laps } = courseData;
 
-  const routeElements = elements.filter((el) => el.type !== "rescue_zone");
+  const routeElements = elements.filter((el) => el.type !== "rescue_zone" && el.type !== "feeding_platform");
   const totalDistance = distanceKm != null ? distanceKm * laps : null;
 
   return (

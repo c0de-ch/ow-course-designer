@@ -112,9 +112,9 @@ export function DesignerCanvas() {
       overlaysRef.current.push(overlay);
     });
 
-    // Redraw polyline (closed loop, excluding rescue zones) with swim-side offset
+    // Redraw polyline (closed loop, excluding rescue zones and feeding platforms) with swim-side offset
     const sortedRouteEls = courseData.elements
-      .filter((el) => el.type !== "rescue_zone")
+      .filter((el) => el.type !== "rescue_zone" && el.type !== "feeding_platform")
       .sort((a, b) => a.order - b.order);
     const routePts = sortedRouteEls.map((el) => ({ lat: el.lat, lng: el.lng }));
 

@@ -55,12 +55,17 @@ function lerpAngle(a: number, b: number, t: number): number {
 export function buildCameraPath(
   routePoints: LatLng[],
   durationSec: number,
-  fps: number = 30
+  fps: number = 30,
+  laps: number = 1
 ): CameraFrame[] {
   if (routePoints.length < 2) return [];
 
-  // Close the loop
-  const pts = [...routePoints, routePoints[0]];
+  // Repeat route for N laps, then close the final loop
+  const pts: LatLng[] = [];
+  for (let lap = 0; lap < laps; lap++) {
+    pts.push(...routePoints);
+  }
+  pts.push(routePoints[0]);
 
   // Compute cumulative distances
   const cumDist: number[] = [0];

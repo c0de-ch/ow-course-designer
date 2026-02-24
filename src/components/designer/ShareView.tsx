@@ -46,9 +46,9 @@ export function ShareView({ courseData, isPrint }: Props) {
 
     mapRef.current = map;
 
-    // Place overlays
-    const routeElements = courseData.elements.filter((el) => el.type !== "rescue_zone");
-    routeElements.forEach((el) => {
+    // Place overlays (all visible elements except rescue zones)
+    const visibleElements = courseData.elements.filter((el) => el.type !== "rescue_zone");
+    visibleElements.forEach((el) => {
       const svgHtml = getMarkerSvg(el.type, false, el.metadata);
       const tempDiv = document.createElement("div");
       tempDiv.innerHTML = svgHtml;
@@ -82,7 +82,8 @@ export function ShareView({ courseData, isPrint }: Props) {
       overlay.setMap(map);
     });
 
-    // Polyline with swim-side offset
+    // Polyline with swim-side offset (exclude feeding platforms from route)
+    const routeElements = visibleElements.filter((el) => el.type !== "feeding_platform");
     if (routeElements.length >= 2) {
       const pts = routeElements.map((el) => ({ lat: el.lat, lng: el.lng }));
       const closedPts = [...pts, pts[0]];
@@ -105,9 +106,9 @@ export function ShareView({ courseData, isPrint }: Props) {
         map,
       });
 
-      // Fit bounds
+      // Fit bounds to all visible elements
       const bounds = new google.maps.LatLngBounds();
-      routeElements.forEach((el) =>
+      visibleElements.forEach((el) =>
         bounds.extend(new google.maps.LatLng(el.lat, el.lng))
       );
       map.fitBounds(bounds, 60);
@@ -136,7 +137,9 @@ export function ShareView({ courseData, isPrint }: Props) {
           <div className="flex-1" />
           {courseData.distanceKm != null && courseData.distanceKm > 0 && (
             <div className="badge badge-primary badge-lg">
-              {courseData.distanceKm.toFixed(2)} km
+              {(courseData.laps ?? 1) > 1
+                ? `${(courseData.distanceKm * (courseData.laps ?? 1)).toFixed(2)} km (${courseData.laps} laps)`
+                : `${courseData.distanceKm.toFixed(2)} km`}
             </div>
           )}
         </header>
@@ -149,7 +152,11 @@ export function ShareView({ courseData, isPrint }: Props) {
             <span className="text-sm text-base-content/60">— {courseData.lakeLabel}</span>
           )}
           {courseData.distanceKm != null && courseData.distanceKm > 0 && (
-            <span className="ml-auto font-medium">{courseData.distanceKm.toFixed(2)} km</span>
+            <span className="ml-auto font-medium">
+              {(courseData.laps ?? 1) > 1
+                ? `${courseData.distanceKm.toFixed(2)} km × ${courseData.laps} laps = ${(courseData.distanceKm * (courseData.laps ?? 1)).toFixed(2)} km`
+                : `${courseData.distanceKm.toFixed(2)} km`}
+            </span>
           )}
         </div>
       )}
@@ -162,9 +169,16 @@ export function ShareView({ courseData, isPrint }: Props) {
         )}
         <div ref={mapDivRef} className="w-full h-full" style={{ minHeight: "500px" }} />
         <RaceBranding readOnly raceLabel={courseData.raceLabel} raceLogo={courseData.raceLogo} />
-        {courseData.distanceKm != null && courseData.distanceKm > 0 && (courseData.laps ?? 1) > 1 && (
-          <div className="absolute bottom-3 right-3 bg-black/60 text-white px-3 py-1.5 rounded text-sm font-medium z-10">
-            Total: {(courseData.distanceKm * (courseData.laps ?? 1)).toFixed(2)} km ({courseData.laps ?? 1} laps)
+        {courseData.distanceKm != null && courseData.distanceKm > 0 && (
+          <div className="absolute bottom-3 right-3 bg-black/70 text-white px-4 py-2 rounded-lg z-10 text-right">
+            {(courseData.laps ?? 1) > 1 ? (
+              <>
+                <div className="text-lg font-bold">{(courseData.distanceKm * (courseData.laps ?? 1)).toFixed(2)} km</div>
+                <div className="text-xs opacity-80">{courseData.distanceKm.toFixed(2)} km × {courseData.laps} laps</div>
+              </>
+            ) : (
+              <div className="text-lg font-bold">{courseData.distanceKm.toFixed(2)} km</div>
+            )}
           </div>
         )}
       </div>

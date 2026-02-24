@@ -212,7 +212,7 @@ export const useCourseStore = create<CourseStore>((set, get) => ({
   computeDistance: () => {
     const { courseData } = get();
     const routeElements = courseData.elements.filter(
-      (el) => el.type !== "rescue_zone"
+      (el) => el.type !== "rescue_zone" && el.type !== "feeding_platform"
     );
     const distanceKm = totalCourseDistanceKm(routeElements);
     set({ courseData: { ...courseData, distanceKm } });
