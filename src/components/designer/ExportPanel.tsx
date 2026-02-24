@@ -61,6 +61,13 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
       </button>
 
       <button
+        onClick={() => downloadFrom(`/api/courses/${courseId}/export/kml`)}
+        className="btn btn-ghost btn-sm justify-start gap-2 w-full font-normal"
+      >
+        <span className="text-base">🌍</span> KML
+      </button>
+
+      <button
         onClick={async () => {
           setExporting("pdf");
           downloadFrom(`/api/courses/${courseId}/export/pdf`);
