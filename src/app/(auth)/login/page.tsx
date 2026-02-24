@@ -140,6 +140,9 @@ function LoginForm() {
           </p>
         </div>
       </div>
+      <p className="mt-4 text-xs text-base-content/40">
+        v{process.env.NEXT_PUBLIC_APP_VERSION}
+      </p>
     </div>
   );
 }

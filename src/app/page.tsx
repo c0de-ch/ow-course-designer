@@ -29,7 +29,7 @@ export default function LandingPage() {
         </div>
       </div>
       <footer className="absolute bottom-4 text-white/40 text-sm z-10">
-        &copy; 2026 c0de.ch
+        &copy; 2026 c0de.ch &middot; v{process.env.NEXT_PUBLIC_APP_VERSION}
       </footer>
     </div>
   );
