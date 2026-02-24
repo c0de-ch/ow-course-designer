@@ -59,6 +59,8 @@ export interface CourseData {
   distanceKm?: number | null;
   elements: CourseElement[];
   laps: number;
+  raceLabel?: string | null;
+  raceLogo?: string | null;
 }
 
 interface GateFirstClick {
@@ -89,6 +91,8 @@ interface CourseStore {
   reorderElements: (elements: CourseElement[]) => void;
   computeDistance: () => void;
   setLaps: (laps: number) => void;
+  setRaceLabel: (label: string | null) => void;
+  setRaceLogo: (logo: string | null) => void;
   resetCourse: () => void;
 }
 
@@ -181,6 +185,16 @@ export const useCourseStore = create<CourseStore>((set, get) => ({
   setLaps: (laps) => {
     const { courseData } = get();
     set({ courseData: { ...courseData, laps }, isDirty: true });
+  },
+
+  setRaceLabel: (label) => {
+    const { courseData } = get();
+    set({ courseData: { ...courseData, raceLabel: label }, isDirty: true });
+  },
+
+  setRaceLogo: (logo) => {
+    const { courseData } = get();
+    set({ courseData: { ...courseData, raceLogo: logo }, isDirty: true });
   },
 
   computeDistance: () => {

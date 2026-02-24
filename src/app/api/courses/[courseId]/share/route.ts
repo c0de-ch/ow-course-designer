@@ -34,6 +34,8 @@ export async function POST(
     zoomLevel: course.zoomLevel,
     distanceKm: course.distanceKm,
     laps: course.laps ?? 1,
+    raceLabel: course.raceLabel ?? null,
+    raceLogo: course.raceLogo ?? null,
     elements: course.elements.map((el) => ({
       id: el.id,
       type: el.type as CourseData["elements"][0]["type"],

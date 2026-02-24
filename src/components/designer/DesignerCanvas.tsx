@@ -6,6 +6,7 @@ import { useCourseStore, BuoySide } from "@/store/courseStore";
 import { createMarkerOverlay } from "./MarkerOverlay";
 import { LakeSearch } from "./LakeSearch";
 import { CourseStats } from "./CourseStats";
+import { RaceBranding } from "./RaceBranding";
 
 export function DesignerCanvas() {
   const mapDivRef = useRef<HTMLDivElement>(null);
@@ -263,6 +264,9 @@ export function DesignerCanvas() {
           <CourseStats />
         </div>
       )}
+
+      {/* Race branding overlay */}
+      <RaceBranding />
 
       {/* Gate hint */}
       {activeTool === "gate" && gateFirstClick && (
