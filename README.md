@@ -37,10 +37,143 @@ npx prisma studio                 # DB GUI at localhost:5555
 
 ## Deployment
 
-### Server Prerequisites
+Production URL: **https://ow-course-designer.c0de.ch**
 
-- Docker and Docker Compose
-- SSH access
+The app runs as a Docker container on port **3010** behind Cloudflare proxy (HTTPS).
+
+---
+
+### 1. Server: Create a Dedicated User
+
+```bash
+# As root on the server
+adduser --system --group --home /srv/ow-course-designer --shell /bin/bash owdesigner
+
+# Add to docker group so it can manage containers
+usermod -aG docker owdesigner
+
+# Create app and data directories
+mkdir -p /srv/ow-course-designer/data/flyovers
+chown -R owdesigner:owdesigner /srv/ow-course-designer
+```
+
+Set up SSH key access for deployments (from your local machine or GitHub Actions):
+
+```bash
+# On your local machine — copy your public key to the server
+ssh-copy-id owdesigner@your-server.com
+```
+
+---
+
+### 2. Google Cloud: Maps API Key
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project (or select an existing one)
+3. Go to **APIs & Services → Library**
+4. Enable these APIs:
+   - **Maps JavaScript API**
+   - **Places API (New)**
+5. Go to **APIs & Services → Credentials**
+6. Click **Create Credentials → API key**
+7. Click on the newly created key to configure restrictions:
+   - **Application restrictions**: HTTP referrers
+   - Add these referrers:
+     - `https://ow-course-designer.c0de.ch/*`
+     - `http://localhost:3000/*` (for local dev)
+   - **API restrictions**: Restrict key → select **Maps JavaScript API** and **Places API (New)**
+8. Copy the API key → this is your `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
+
+---
+
+### 3. Google Cloud: OAuth 2.0 Client (for Google Login)
+
+1. In the same Google Cloud project, go to **APIs & Services → OAuth consent screen**
+2. Configure the consent screen:
+   - **App name**: OW Course Designer
+   - **User support email**: your email
+   - **Authorized domains**: `c0de.ch`
+   - **Developer contact email**: your email
+3. Add scopes: `email`, `profile`, `openid`
+4. Go to **APIs & Services → Credentials**
+5. Click **Create Credentials → OAuth client ID**
+6. **Application type**: Web application
+7. **Name**: OW Course Designer
+8. **Authorized JavaScript origins**:
+   - `https://ow-course-designer.c0de.ch`
+   - `http://localhost:3000` (for local dev)
+9. **Authorized redirect URIs**:
+   - `https://ow-course-designer.c0de.ch/api/auth/callback/google`
+   - `http://localhost:3000/api/auth/callback/google` (for local dev)
+10. Click **Create** and copy:
+    - **Client ID** → `GOOGLE_CLIENT_ID`
+    - **Client secret** → `GOOGLE_CLIENT_SECRET`
+
+---
+
+### 4. Server: Environment File
+
+```bash
+# On the server as owdesigner
+sudo -u owdesigner bash
+cd /srv/ow-course-designer
+
+cat > .env <<'EOF'
+DATABASE_PROVIDER=sqlite
+DATABASE_URL=file:./data/prod.db
+NEXTAUTH_URL=https://ow-course-designer.c0de.ch
+NEXTAUTH_SECRET=<generate with: openssl rand -base64 32>
+GOOGLE_CLIENT_ID=<from step 3>
+GOOGLE_CLIENT_SECRET=<from step 3>
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=<from step 2>
+NEXT_PUBLIC_APP_URL=https://ow-course-designer.c0de.ch
+EOF
+
+chmod 600 .env
+```
+
+---
+
+### 5. Cloudflare: DNS & HTTPS
+
+1. Log in to [Cloudflare Dashboard](https://dash.cloudflare.com/) → select the `c0de.ch` zone
+2. Go to **DNS → Records**
+3. Add an **A record**:
+   - **Name**: `ow-course-designer`
+   - **IPv4 address**: your server IP
+   - **Proxy status**: **Proxied** (orange cloud)
+4. Go to **SSL/TLS → Overview**
+   - Set encryption mode to **Full (strict)**
+5. Go to **SSL/TLS → Origin Server**
+   - Create an **Origin Certificate** if you don't have one already (Cloudflare generates a cert for your server)
+   - Install it on your server or use a self-signed cert — Cloudflare terminates public HTTPS, and "Full (strict)" validates the origin cert
+6. Cloudflare proxies `https://ow-course-designer.c0de.ch` → `http://your-server:3010`
+
+The container binds to port **3010** on the host. Cloudflare handles HTTPS termination and proxies traffic to this port.
+
+---
+
+### 6. Deploy
+
+#### Manual Deploy
+
+```bash
+export DEPLOY_SERVER=owdesigner@your-server.com
+export DEPLOY_DIR=/srv/ow-course-designer
+bash deploy.sh
+```
+
+#### Auto Deploy (GitHub Actions)
+
+Pushes to `main` trigger `.github/workflows/deploy.yml` which builds the Docker image, copies it to the server, and restarts the container.
+
+**Required GitHub Secrets:**
+
+| Secret | Description |
+|--------|-------------|
+| `DEPLOY_HOST` | Server hostname or IP |
+| `DEPLOY_USER` | `owdesigner` |
+| `DEPLOY_SSH_KEY` | SSH private key for the `owdesigner` user |
 
 ### Data Volumes
 
@@ -50,51 +183,6 @@ The `./data` directory on the host is mounted to `/app/data` inside the containe
 - `flyovers/` — Pre-recorded flyover videos attached to shared courses
 
 This directory is persisted via the Docker volume mount in `docker-compose.prod.yml`.
-
-### First-time Setup
-
-```bash
-# On the server
-mkdir -p /srv/ow-course-designer/data/flyovers
-cd /srv/ow-course-designer
-
-# Create .env with production values
-cat > .env <<'EOF'
-DATABASE_PROVIDER=sqlite
-DATABASE_URL=file:./data/prod.db
-NEXTAUTH_URL=https://ow-design.c0de.ch
-NEXTAUTH_SECRET=<generate with: openssl rand -base64 32>
-GOOGLE_CLIENT_ID=<your-google-client-id>
-GOOGLE_CLIENT_SECRET=<your-google-client-secret>
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=<your-maps-api-key>
-NEXT_PUBLIC_APP_URL=https://ow-design.c0de.ch
-EOF
-```
-
-### DNS & SSL (Cloudflare)
-
-1. Add an **A record** for `ow-design.c0de.ch` pointing to the server IP, **proxied** (orange cloud)
-2. Set SSL/TLS mode to **Full (strict)**
-
-### Manual Deploy
-
-```bash
-export DEPLOY_SERVER=user@your-server.com
-export DEPLOY_DIR=/srv/ow-course-designer
-bash deploy.sh
-```
-
-### Auto Deploy (GitHub Actions)
-
-Pushes to `main` trigger `.github/workflows/deploy.yml` which builds the Docker image, copies it to the server, and restarts the container.
-
-**Required GitHub Secrets:**
-
-| Secret | Description |
-|--------|-------------|
-| `DEPLOY_HOST` | Server hostname or IP |
-| `DEPLOY_USER` | SSH username |
-| `DEPLOY_SSH_KEY` | SSH private key |
 
 ## License
 

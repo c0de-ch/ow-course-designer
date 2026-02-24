@@ -128,10 +128,12 @@ Key properties on `Place`: `displayName`, `location`, `formattedAddress`, `viewp
 
 ## Deployment
 
+Production URL: `https://ow-course-designer.c0de.ch` — runs on port **3010** behind Cloudflare proxy.
+
 ```bash
-export DEPLOY_SERVER=user@your-server.com
+export DEPLOY_SERVER=owdesigner@your-server.com
 export DEPLOY_DIR=/srv/ow-course-designer
 bash deploy.sh
 ```
 
-Place `.env` (with production values) in `$DEPLOY_DIR` on the server before first deploy.
+Place `.env` (with production values) in `$DEPLOY_DIR` on the server before first deploy. See `README.md` for full setup instructions (dedicated user, Google OAuth/Maps config, Cloudflare).

@@ -5,7 +5,7 @@ services:
     image: ow-course-designer:latest
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3010:3000"
     environment:
       DATABASE_PROVIDER: sqlite
       DATABASE_URL: file:/app/data/prod.db
