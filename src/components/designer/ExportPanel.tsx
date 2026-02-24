@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { FlyoverModal } from "./FlyoverModal";
 
 interface ExportPanelProps {
   courseId: string;
@@ -10,6 +11,7 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copying, setCopying] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [showFlyover, setShowFlyover] = useState(false);
 
   async function handleShare() {
     setExporting("share");
@@ -101,6 +103,15 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
         <span className="text-base">🔗</span>
         {exporting === "share" ? "Creating…" : "Share link"}
       </button>
+
+      <button
+        onClick={() => setShowFlyover(true)}
+        className="btn btn-ghost btn-sm justify-start gap-2 w-full font-normal"
+      >
+        <span className="text-base">🎬</span> Flyover Video
+      </button>
+
+      {showFlyover && <FlyoverModal onClose={() => setShowFlyover(false)} />}
 
       {shareUrl && (
         <div className="mt-2 p-2 bg-base-200 rounded text-xs break-all">
