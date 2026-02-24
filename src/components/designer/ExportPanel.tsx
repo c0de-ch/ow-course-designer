@@ -25,7 +25,18 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
 
   async function copyShareUrl() {
     if (!shareUrl) return;
-    await navigator.clipboard.writeText(shareUrl);
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = shareUrl;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
     setCopying(true);
     setTimeout(() => setCopying(false), 2000);
   }
@@ -87,7 +98,13 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
       {shareUrl && (
         <div className="mt-2 p-2 bg-base-200 rounded text-xs break-all">
           <p className="font-medium mb-1">Share URL:</p>
-          <p className="text-base-content/70 mb-2">{shareUrl}</p>
+          <input
+            type="text"
+            readOnly
+            value={shareUrl}
+            className="input input-xs w-full mb-2 text-base-content/70 bg-base-100"
+            onClick={(e) => (e.target as HTMLInputElement).select()}
+          />
           <button
             onClick={copyShareUrl}
             className="btn btn-xs btn-outline w-full"
