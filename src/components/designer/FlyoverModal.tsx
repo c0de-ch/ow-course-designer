@@ -43,12 +43,22 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
       return;
     }
 
-    const center = courseData.lakeLatLng
-      ? (() => {
-          const [lat, lng] = courseData.lakeLatLng!.split(",").map(Number);
-          return { lat, lng };
-        })()
-      : { lat: 46.8182, lng: 8.2275 };
+    const routeElements = courseData.elements
+      .filter((el) => el.type !== "rescue_zone")
+      .sort((a, b) => a.order - b.order);
+
+    // Center on start element, or first element, or lake
+    const startEl = routeElements.find((el) => el.type === "start");
+    const center = startEl
+      ? { lat: startEl.lat, lng: startEl.lng }
+      : routeElements.length > 0
+        ? { lat: routeElements[0].lat, lng: routeElements[0].lng }
+        : courseData.lakeLatLng
+          ? (() => {
+              const [lat, lng] = courseData.lakeLatLng!.split(",").map(Number);
+              return { lat, lng };
+            })()
+          : { lat: 46.8182, lng: 8.2275 };
 
     const opts: google.maps.MapOptions = {
       center,
@@ -63,15 +73,28 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
     const map = new google.maps.Map(mapDivRef.current, opts);
     mapRef.current = map;
 
+    // Fit bounds to all route elements with 500m padding
+    if (routeElements.length >= 2) {
+      const bounds = new google.maps.LatLngBounds();
+      routeElements.forEach((el) => bounds.extend({ lat: el.lat, lng: el.lng }));
+
+      // Extend bounds by ~500m on each side
+      // 500m ≈ 0.0045° latitude, longitude varies by cos(lat)
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
+      const latPad = 0.0045; // ~500m
+      const lngPad = 0.0045 / Math.cos((ne.lat() + sw.lat()) / 2 * Math.PI / 180);
+      bounds.extend({ lat: ne.lat() + latPad, lng: ne.lng() + lngPad });
+      bounds.extend({ lat: sw.lat() - latPad, lng: sw.lng() - lngPad });
+
+      map.fitBounds(bounds);
+    }
+
     // Wait for map to be fully loaded
     map.addListener("idle", () => {
       setMapReady(true);
 
-      // Draw route
-      const routeElements = courseData.elements
-        .filter((el) => el.type !== "rescue_zone")
-        .sort((a, b) => a.order - b.order);
-
+      // Draw route polyline
       if (routeElements.length >= 2) {
         const path = routeElements.map((el) => ({ lat: el.lat, lng: el.lng }));
         path.push(path[0]);
