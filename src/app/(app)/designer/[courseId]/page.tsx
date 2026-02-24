@@ -38,6 +38,7 @@ export default function DesignerPage({ params }: Props) {
           zoomLevel: data.zoomLevel,
           distanceKm: data.distanceKm,
           elements: data.elements,
+          laps: data.laps ?? 1,
         });
         setCourseName(data.name);
         setLoading(false);
@@ -85,6 +86,7 @@ export default function DesignerPage({ params }: Props) {
           zoomLevel: courseData.zoomLevel,
           distanceKm: courseData.distanceKm,
           elements: courseData.elements,
+          laps: courseData.laps,
         }),
       });
       setDirty(false);

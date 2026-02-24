@@ -58,6 +58,7 @@ export interface CourseData {
   zoomLevel: number;
   distanceKm?: number | null;
   elements: CourseElement[];
+  laps: number;
 }
 
 interface GateFirstClick {
@@ -87,6 +88,7 @@ interface CourseStore {
   removeElement: (id: string) => void;
   reorderElements: (elements: CourseElement[]) => void;
   computeDistance: () => void;
+  setLaps: (laps: number) => void;
   resetCourse: () => void;
 }
 
@@ -98,6 +100,7 @@ const defaultCourseData: CourseData = {
   name: "Untitled Course",
   zoomLevel: 14,
   elements: [],
+  laps: 1,
 };
 
 export const useCourseStore = create<CourseStore>((set, get) => ({
@@ -173,6 +176,11 @@ export const useCourseStore = create<CourseStore>((set, get) => ({
     const { courseData } = get();
     set({ courseData: { ...courseData, elements }, isDirty: true });
     get().computeDistance();
+  },
+
+  setLaps: (laps) => {
+    const { courseData } = get();
+    set({ courseData: { ...courseData, laps }, isDirty: true });
   },
 
   computeDistance: () => {
