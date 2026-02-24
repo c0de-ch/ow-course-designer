@@ -102,10 +102,14 @@ function feedingPlatformSvg(selected: boolean): string {
   return `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
     ${ring}
     <rect x="3" y="3" width="22" height="22" rx="3" fill="#7C3AED" stroke="rgba(0,0,0,0.3)" stroke-width="1.5"/>
-    <path d="M9,20 L9,15 L19,15 L19,20 Q14,22 9,20 Z" fill="white" fill-opacity="0.9"/>
-    <path d="M19,16 Q23,16 23,18 Q23,20 19,20" fill="none" stroke="white" stroke-width="1.5"/>
-    <path d="M12,14 Q11,12 12,10" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-    <path d="M16,14 Q15,12 16,10" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+    <rect x="6" y="6" width="16" height="16" rx="1.5" fill="white" fill-opacity="0.25"/>
+    <line x1="6" y1="10" x2="22" y2="10" stroke="white" stroke-opacity="0.4" stroke-width="0.8"/>
+    <line x1="6" y1="14" x2="22" y2="14" stroke="white" stroke-opacity="0.4" stroke-width="0.8"/>
+    <line x1="6" y1="18" x2="22" y2="18" stroke="white" stroke-opacity="0.4" stroke-width="0.8"/>
+    <path d="M11,11 L11,17 L17,17 L17,11 Z" fill="white" fill-opacity="0.9"/>
+    <path d="M17,13 L19,13 Q20,13 20,14.5 Q20,16 17,16" fill="none" stroke="white" stroke-width="1.2"/>
+    <path d="M12.5,10 Q12,8.5 13,8" fill="none" stroke="white" stroke-width="1" stroke-linecap="round"/>
+    <path d="M15,10 Q14.5,8.5 15.5,8" fill="none" stroke="white" stroke-width="1" stroke-linecap="round"/>
   </svg>`;
 }
 
