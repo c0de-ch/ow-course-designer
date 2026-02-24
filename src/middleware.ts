@@ -1,6 +1,4 @@
-import { withAuth } from "next-auth/middleware";
-
-export default withAuth;
+export { auth as default } from "@/lib/auth";
 
 export const config = {
   matcher: ["/dashboard/:path*", "/designer/:path*", "/api/courses/:path*"],
