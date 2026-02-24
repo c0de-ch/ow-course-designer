@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { encodeCourseData } from "@/lib/course-encoder";
 import { launchBrowser } from "@/lib/puppeteer";
@@ -15,7 +14,7 @@ export async function GET(
   const start = Date.now();
   return await tracer.startActiveSpan("GET /api/courses/:id/export/pdf", async (span) => {
     try {
-      const session = await getServerSession(authOptions);
+      const session = await auth();
       if (!session?.user) {
         span.setStatus({ code: 2, message: "Unauthorized" });
         return new NextResponse("Unauthorized", { status: 401 });
