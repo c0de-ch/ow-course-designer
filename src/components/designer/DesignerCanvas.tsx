@@ -74,6 +74,7 @@ export function DesignerCanvas() {
       if (cd.zoomLevel !== zoom) {
         useCourseStore.setState({
           courseData: { ...cd, zoomLevel: zoom },
+          isDirty: true,
         });
       }
     });
