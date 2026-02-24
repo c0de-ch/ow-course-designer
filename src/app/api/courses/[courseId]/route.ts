@@ -50,6 +50,8 @@ const putSchema = z.object({
   zoomLevel: z.number().int().min(1).max(22).optional(),
   distanceKm: z.number().nullable().optional(),
   laps: z.number().int().min(1).max(100).optional(),
+  raceLabel: z.string().nullable().optional(),
+  raceLogo: z.string().max(700000).nullable().optional(),
   elements: z.array(elementSchema).optional(),
 });
 
@@ -84,6 +86,8 @@ export async function PUT(
           ...(data.zoomLevel !== undefined && { zoomLevel: data.zoomLevel }),
           ...(data.distanceKm !== undefined && { distanceKm: data.distanceKm }),
           ...(data.laps !== undefined && { laps: data.laps }),
+          ...(data.raceLabel !== undefined && { raceLabel: data.raceLabel }),
+          ...(data.raceLogo !== undefined && { raceLogo: data.raceLogo }),
         },
       });
 
