@@ -40,6 +40,8 @@ export default function DesignerPage({ params }: Props) {
           distanceKm: data.distanceKm,
           elements: data.elements,
           laps: data.laps ?? 1,
+          raceLabel: data.raceLabel ?? null,
+          raceLogo: data.raceLogo ?? null,
         });
         setCourseName(data.name);
         setLoading(false);
@@ -89,6 +91,8 @@ export default function DesignerPage({ params }: Props) {
           distanceKm: courseData.distanceKm,
           elements: courseData.elements,
           laps: courseData.laps,
+          raceLabel: courseData.raceLabel,
+          raceLogo: courseData.raceLogo,
         }),
       });
       setDirty(false);
