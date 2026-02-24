@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Loader } from "@googlemaps/js-api-loader";
 import { useCourseStore } from "@/store/courseStore";
 import { getMarkerSvg } from "./markers/markerIcons";
 import { buildCameraPath, CameraFrame } from "@/lib/flyover/cameraPath";
-import { previewFlyover, recordFlyover } from "@/lib/flyover/flyoverController";
 
 interface FlyoverModalProps {
   onClose: () => void;
@@ -14,28 +12,26 @@ interface FlyoverModalProps {
 export function FlyoverModal({ onClose }: FlyoverModalProps) {
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
-  const [mapsLoaded, setMapsLoaded] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   const [duration, setDuration] = useState(20);
   const [status, setStatus] = useState<"idle" | "previewing" | "recording" | "done">("idle");
   const [progress, setProgress] = useState(0);
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [statusMsg, setStatusMsg] = useState("Initializing map...");
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const framesRef = useRef<CameraFrame[]>([]);
   const abortRef = useRef(false);
 
   const { courseData } = useCourseStore();
-
   const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || undefined;
 
+  // Initialize map — google.maps is already loaded by DesignerCanvas
   useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
-    const loader = new Loader({ apiKey, version: "weekly" });
-    loader.importLibrary("maps").then(() => setMapsLoaded(true));
-  }, []);
-
-  useEffect(() => {
-    if (!mapsLoaded || !mapDivRef.current || mapRef.current) return;
+    if (!mapDivRef.current || mapRef.current) return;
+    if (typeof google === "undefined" || !google.maps) {
+      setError("Google Maps not loaded. Open the designer first.");
+      return;
+    }
 
     const center = courseData.lakeLatLng
       ? (() => {
@@ -44,103 +40,237 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
         })()
       : { lat: 46.8182, lng: 8.2275 };
 
-    const mapOptions: google.maps.MapOptions = {
+    const opts: google.maps.MapOptions = {
       center,
       zoom: courseData.zoomLevel ?? 14,
       mapTypeId: "satellite",
       disableDefaultUI: true,
     };
-
-    // Only pass mapId if it looks like a valid ID (not a placeholder)
     if (mapId && mapId.length > 5) {
-      mapOptions.mapId = mapId;
+      opts.mapId = mapId;
     }
 
-    const map = new google.maps.Map(mapDivRef.current, mapOptions);
+    const map = new google.maps.Map(mapDivRef.current, opts);
     mapRef.current = map;
 
-    // Draw route polyline
+    // Wait for map to be fully loaded
+    map.addListener("idle", () => {
+      setMapReady(true);
+
+      // Draw route
+      const routeElements = courseData.elements
+        .filter((el) => el.type !== "rescue_zone")
+        .sort((a, b) => a.order - b.order);
+
+      if (routeElements.length >= 2) {
+        const path = routeElements.map((el) => ({ lat: el.lat, lng: el.lng }));
+        path.push(path[0]);
+        new google.maps.Polyline({
+          path,
+          geodesic: true,
+          strokeColor: "#3B82F6",
+          strokeOpacity: 0.8,
+          strokeWeight: 4,
+          map,
+        });
+      }
+
+      // Draw markers
+      routeElements.forEach((el) => {
+        const svgHtml = getMarkerSvg(el.type, false, el.metadata);
+        const overlay = new google.maps.OverlayView();
+        overlay.onAdd = function () {
+          const div = document.createElement("div");
+          div.style.cssText =
+            "position:absolute;transform:translate(-50%,-50%);pointer-events:none;";
+          div.innerHTML = svgHtml;
+          this.getPanes()!.overlayLayer.appendChild(div);
+          (this as unknown as { _div: HTMLDivElement })._div = div;
+        };
+        overlay.draw = function () {
+          const pt = this.getProjection().fromLatLngToDivPixel(
+            new google.maps.LatLng(el.lat, el.lng)
+          );
+          const div = (this as unknown as { _div: HTMLDivElement })._div;
+          if (pt && div) {
+            div.style.left = `${pt.x}px`;
+            div.style.top = `${pt.y}px`;
+          }
+        };
+        overlay.onRemove = function () {
+          const div = (this as unknown as { _div: HTMLDivElement })._div;
+          div?.parentNode?.removeChild(div);
+        };
+        overlay.setMap(map);
+      });
+
+      // Build camera path
+      const routePts = routeElements.map((el) => ({
+        lat: el.lat,
+        lng: el.lng,
+      }));
+      framesRef.current = buildCameraPath(routePts, duration);
+
+      if (framesRef.current.length === 0) {
+        setStatusMsg("Need at least 2 route points for flyover");
+      } else {
+        setStatusMsg(`Ready — ${duration}s flyover`);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Rebuild frames when duration changes
+  useEffect(() => {
+    if (!mapReady) return;
     const routeElements = courseData.elements
       .filter((el) => el.type !== "rescue_zone")
       .sort((a, b) => a.order - b.order);
-
-    if (routeElements.length >= 2) {
-      const path = routeElements.map((el) => ({ lat: el.lat, lng: el.lng }));
-      path.push(path[0]);
-      new google.maps.Polyline({
-        path,
-        geodesic: true,
-        strokeColor: "#3B82F6",
-        strokeOpacity: 0.8,
-        strokeWeight: 4,
-        map,
-      });
-    }
-
-    // Draw markers
-    routeElements.forEach((el) => {
-      const svgHtml = getMarkerSvg(el.type, false, el.metadata);
-      const overlay = new google.maps.OverlayView();
-      overlay.onAdd = function () {
-        const div = document.createElement("div");
-        div.style.cssText = "position:absolute;transform:translate(-50%,-50%);pointer-events:none;";
-        div.innerHTML = svgHtml;
-        this.getPanes()!.overlayLayer.appendChild(div);
-        (this as unknown as { _div: HTMLDivElement })._div = div;
-      };
-      overlay.draw = function () {
-        const pt = this.getProjection().fromLatLngToDivPixel(
-          new google.maps.LatLng(el.lat, el.lng)
-        );
-        const div = (this as unknown as { _div: HTMLDivElement })._div;
-        if (pt && div) {
-          div.style.left = `${pt.x}px`;
-          div.style.top = `${pt.y}px`;
-        }
-      };
-      overlay.onRemove = function () {
-        const div = (this as unknown as { _div: HTMLDivElement })._div;
-        div?.parentNode?.removeChild(div);
-      };
-      overlay.setMap(map);
-    });
-
-    // Build camera path
     const routePts = routeElements.map((el) => ({ lat: el.lat, lng: el.lng }));
     framesRef.current = buildCameraPath(routePts, duration);
-
-    if (framesRef.current.length === 0) {
-      setStatusMsg("Need at least 2 route points for flyover");
-    } else {
-      setStatusMsg(`Ready — ${framesRef.current.length} frames (${duration}s)`);
+    if (framesRef.current.length > 0) {
+      setStatusMsg(`Ready — ${duration}s flyover`);
     }
-  }, [mapsLoaded, courseData, mapId, duration]);
+  }, [duration, mapReady, courseData.elements]);
 
   const handlePreview = useCallback(async () => {
-    if (!mapRef.current || framesRef.current.length === 0) return;
+    const map = mapRef.current;
+    if (!map || framesRef.current.length === 0) return;
     abortRef.current = false;
     setStatus("previewing");
     setProgress(0);
     setError(null);
-    try {
-      await previewFlyover(mapRef.current, framesRef.current, 30, setProgress, setStatusMsg);
-    } catch (err) {
-      setError((err as Error).message);
+    setStatusMsg("Previewing...");
+
+    const frames = framesRef.current;
+    const interval = 1000 / 30;
+
+    for (let i = 0; i < frames.length; i++) {
+      if (abortRef.current) break;
+      const f = frames[i];
+      try {
+        map.moveCamera({
+          center: f.center,
+          heading: f.heading,
+          tilt: f.tilt,
+          zoom: f.zoom,
+        });
+      } catch {
+        map.setCenter(f.center);
+        map.setZoom(f.zoom);
+      }
+      setProgress(i / frames.length);
+      await new Promise((r) => setTimeout(r, interval));
     }
+    setProgress(1);
+    setStatusMsg("Preview complete");
     if (!abortRef.current) setStatus("idle");
   }, []);
 
   const handleRecord = useCallback(async () => {
-    if (!mapRef.current || framesRef.current.length === 0) return;
+    const map = mapRef.current;
+    if (!map || framesRef.current.length === 0) return;
     setStatus("recording");
     setProgress(0);
     setError(null);
+    setStatusMsg("Preparing recording...");
+
+    const canvas = map.getDiv().querySelector("canvas");
+    if (!canvas) {
+      setError(
+        "Cannot access map canvas. Recording requires a Vector Map ID. " +
+          "Preview still works — use screen recording software to capture it."
+      );
+      setStatus("idle");
+      return;
+    }
+
     try {
-      const blob = await recordFlyover(mapRef.current, framesRef.current, 30, setProgress, setStatusMsg);
-      const url = URL.createObjectURL(blob);
+      const fps = 30;
+      const frames = framesRef.current;
+      const stream = canvas.captureStream(fps);
+
+      const codecs = [
+        "video/webm;codecs=vp9",
+        "video/webm;codecs=vp8",
+        "video/webm",
+      ];
+      const mimeType =
+        codecs.find((c) => MediaRecorder.isTypeSupported(c)) ?? "video/webm";
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: 5_000_000,
+      });
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      const stopped = new Promise<void>((r) => {
+        recorder.onstop = () => r();
+      });
+
+      recorder.start(100);
+      setStatusMsg("Recording...");
+
+      for (let i = 0; i < frames.length; i++) {
+        if (abortRef.current) break;
+        const f = frames[i];
+        try {
+          map.moveCamera({
+            center: f.center,
+            heading: f.heading,
+            tilt: f.tilt,
+            zoom: f.zoom,
+          });
+        } catch {
+          map.setCenter(f.center);
+          map.setZoom(f.zoom);
+        }
+
+        // Wait for tiles
+        await new Promise<void>((resolve) => {
+          const listener = map.addListener("tilesloaded", () => {
+            google.maps.event.removeListener(listener);
+            resolve();
+          });
+          setTimeout(resolve, 300);
+        });
+
+        await new Promise((r) => setTimeout(r, 1000 / fps));
+        setProgress((i + 1) / frames.length);
+
+        if (i % 30 === 0) {
+          setStatusMsg(
+            `Recording... ${Math.round(((i + 1) / frames.length) * 100)}%`
+          );
+        }
+      }
+
+      setStatusMsg("Finalizing video...");
+      recorder.stop();
+      await stopped;
+
+      const rawBlob = new Blob(chunks, { type: mimeType });
+
+      let finalBlob = rawBlob;
+      try {
+        const { default: fixWebmDuration } = await import(
+          "fix-webm-duration"
+        );
+        const durationMs = (frames.length / fps) * 1000;
+        finalBlob = await fixWebmDuration(rawBlob, durationMs, {
+          logger: false,
+        });
+      } catch {
+        // use raw blob
+      }
+
+      const url = URL.createObjectURL(finalBlob);
       setVideoUrl(url);
       setStatus("done");
-      setStatusMsg("Recording complete! Click Download.");
+      setStatusMsg("Recording complete!");
     } catch (err) {
       setError((err as Error).message);
       setStatus("idle");
@@ -162,97 +292,89 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
   }
 
   const hasFrames = framesRef.current.length > 0;
+  const busy = status === "previewing" || status === "recording";
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-4 px-4 py-3 bg-base-100">
-        <h2 className="text-lg font-bold">Flyover</h2>
-
-        {/* Status message */}
-        {statusMsg && (
-          <span className="text-xs text-base-content/60 truncate">
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-base-100 rounded-lg shadow-2xl flex flex-col w-full max-w-4xl max-h-[90vh] overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-base-300">
+          <h2 className="text-lg font-bold">Flyover</h2>
+          <span className="text-xs text-base-content/50 truncate flex-1">
             {statusMsg}
           </span>
-        )}
-
-        <div className="flex-1" />
-
-        {(!mapId || mapId.length <= 5) && (
-          <span className="text-xs text-warning">
-            Set NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID for 3D + recording
-          </span>
-        )}
-
-        <div className="flex items-center gap-2">
-          <label className="text-sm">Duration:</label>
-          <select
-            className="select select-xs"
-            value={duration}
-            onChange={(e) => {
-              setDuration(Number(e.target.value));
-              // Rebuild frames on next render via useEffect
-              mapRef.current = null;
-            }}
-            disabled={status !== "idle"}
-          >
-            <option value={10}>10s</option>
-            <option value={20}>20s</option>
-            <option value={30}>30s</option>
-          </select>
-        </div>
-
-        <button
-          onClick={handlePreview}
-          disabled={status !== "idle" || !hasFrames}
-          className="btn btn-sm btn-primary"
-        >
-          {status === "previewing" ? "Previewing..." : "Preview"}
-        </button>
-
-        <button
-          onClick={handleRecord}
-          disabled={status !== "idle" || !hasFrames}
-          className="btn btn-sm btn-secondary"
-        >
-          {status === "recording" ? "Recording..." : "Record"}
-        </button>
-
-        {status === "done" && (
-          <button onClick={handleDownload} className="btn btn-sm btn-success">
-            Download WebM
+          <button onClick={handleClose} className="btn btn-sm btn-ghost">
+            Close
           </button>
-        )}
-
-        <button onClick={handleClose} className="btn btn-sm btn-ghost">
-          Close
-        </button>
-      </div>
-
-      {/* Progress bar */}
-      {(status === "previewing" || status === "recording") && (
-        <div className="w-full bg-base-300 h-1.5">
-          <div
-            className="h-full bg-primary transition-all duration-100"
-            style={{ width: `${Math.round(progress * 100)}%` }}
-          />
         </div>
-      )}
 
-      {error && (
-        <div className="px-4 py-2 bg-error/20 text-error text-sm">
-          {error}
-        </div>
-      )}
-
-      {/* Map */}
-      <div className="flex-1 relative">
-        <div ref={mapDivRef} className="w-full h-full" />
-        {!mapsLoaded && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="loading loading-spinner loading-lg text-white" />
+        {/* Progress bar */}
+        {busy && (
+          <div className="w-full bg-base-300 h-1.5 shrink-0">
+            <div
+              className="h-full bg-primary transition-all duration-100"
+              style={{ width: `${Math.round(progress * 100)}%` }}
+            />
           </div>
         )}
+
+        {/* Error */}
+        {error && (
+          <div className="px-4 py-2 bg-error/10 text-error text-sm shrink-0">
+            {error}
+          </div>
+        )}
+
+        {/* Map area */}
+        <div className="flex-1 min-h-0 relative" style={{ minHeight: "400px" }}>
+          <div ref={mapDivRef} className="absolute inset-0" />
+          {!mapReady && (
+            <div className="absolute inset-0 flex items-center justify-center bg-base-200">
+              <span className="loading loading-spinner loading-lg" />
+            </div>
+          )}
+        </div>
+
+        {/* Controls */}
+        <div className="flex items-center gap-3 px-4 py-3 border-t border-base-300">
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium">Duration:</label>
+            <select
+              className="select select-sm"
+              value={duration}
+              onChange={(e) => setDuration(Number(e.target.value))}
+              disabled={busy}
+            >
+              <option value={10}>10s</option>
+              <option value={20}>20s</option>
+              <option value={30}>30s</option>
+            </select>
+          </div>
+
+          <div className="flex-1" />
+
+          <button
+            onClick={handlePreview}
+            disabled={busy || !mapReady || !hasFrames}
+            className="btn btn-sm btn-primary"
+          >
+            {status === "previewing" ? "Previewing..." : "Preview"}
+          </button>
+
+          <button
+            onClick={handleRecord}
+            disabled={busy || !mapReady || !hasFrames}
+            className="btn btn-sm btn-secondary"
+          >
+            {status === "recording" ? "Recording..." : "Record"}
+          </button>
+
+          {status === "done" && (
+            <button onClick={handleDownload} className="btn btn-sm btn-success">
+              Download WebM
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
