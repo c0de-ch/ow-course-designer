@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OW Parcour Designer",
+  title: "OW Course Designer",
   description: "Design open-water swim courses",
 };
 

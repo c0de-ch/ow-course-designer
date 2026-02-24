@@ -1,0 +1,41 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t ow-course-designer:latest .
+
+      - name: Save image
+        run: docker save ow-course-designer:latest | gzip > image.tar.gz
+
+      - name: Copy to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "image.tar.gz,docker-compose.prod.yml"
+          target: /srv/ow-course-designer
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /srv/ow-course-designer
+            mkdir -p data/flyovers
+            gunzip -c image.tar.gz | docker load
+            rm image.tar.gz
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker image prune -f

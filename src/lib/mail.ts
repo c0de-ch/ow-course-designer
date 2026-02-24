@@ -13,7 +13,7 @@ function getTransport() {
 }
 
 const fromAddress =
-  process.env.SMTP_FROM ?? "OW Parcour Designer <noreply@example.com>";
+  process.env.SMTP_FROM ?? "OW Course Designer <noreply@example.com>";
 
 export async function sendVerificationCode(
   to: string,
@@ -23,7 +23,7 @@ export async function sendVerificationCode(
   await transport.sendMail({
     from: fromAddress,
     to,
-    subject: "Your verification code — OW Parcour Designer",
+    subject: "Your verification code — OW Course Designer",
     text: `Your verification code is: ${code}\n\nThis code expires in 15 minutes.\n\nIf you did not request this, ignore this email.`,
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
@@ -49,7 +49,7 @@ export async function sendAdminNewUserNotification(
     from: fromAddress,
     to: adminEmail,
     subject: `New user registered — ${userEmail}`,
-    text: `A new user has registered on OW Parcour Designer.\n\nName: ${userName ?? "(not provided)"}\nEmail: ${userEmail}\nTime: ${new Date().toISOString()}`,
+    text: `A new user has registered on OW Course Designer.\n\nName: ${userName ?? "(not provided)"}\nEmail: ${userEmail}\nTime: ${new Date().toISOString()}`,
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
         <h2 style="margin:0 0 16px">New user registered</h2>

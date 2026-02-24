@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`ow-parcour-designer` — a tool for designing open-water swim parkour courses. Users pick a body of water via Google Places autocomplete, drop typed markers (buoys, start/finish, gates, shore entries, rescue zones) on a Google Map, see live distance, then export or share the course.
+`ow-course-designer` — a tool for designing open-water swim courses. Users pick a body of water via Google Places autocomplete, drop typed markers (buoys, start/finish, gates, shore entries, rescue zones) on a Google Map, see live distance, then export or share the course.
 
 ## Tech Stack
 
@@ -27,7 +27,7 @@ npx prisma migrate dev            # Run migrations in dev (creates/updates dev.d
 npx prisma migrate deploy         # Apply migrations in production
 npx prisma studio                 # DB GUI at http://localhost:5555
 npx prisma generate               # Regenerate Prisma client after schema changes
-docker build -t ow-parcour-designer .
+docker build -t ow-course-designer .
 bash deploy.sh                    # Deploy to server via SSH (needs DEPLOY_SERVER env var)
 ```
 
@@ -70,6 +70,12 @@ src/
       courses/[courseId]/export/png/route.ts    # Puppeteer PNG
       courses/[courseId]/export/gpx/route.ts    # GPX file
       courses/[courseId]/share/route.ts         # Create snapshot + share URL
+      courses/[courseId]/flyover/route.ts       # Upload flyover video (saves to data/flyovers/)
+      flyover/[filename]/route.ts              # Public: serve flyover video files
+      share/[token]/export/gpx/route.ts        # Public: GPX from snapshot
+      share/[token]/export/kml/route.ts        # Public: KML from snapshot
+      share/[token]/export/pdf/route.ts        # Public: PDF from snapshot (Puppeteer)
+      share/[token]/export/png/route.ts        # Public: PNG from snapshot (Puppeteer)
   components/
     SessionProvider.tsx           # next-auth session wrapper
     QueryProvider.tsx             # tanstack/react-query wrapper
@@ -78,7 +84,8 @@ src/
       LakeSearch.tsx              # Places Autocomplete
       ToolPanel.tsx               # Tool selector sidebar
       CourseStats.tsx             # Live distance display
-      ExportPanel.tsx             # PDF/PNG/GPX/Share buttons
+      ExportPanel.tsx             # PDF/PNG/GPX/Share buttons + flyover upload
+      FlyoverModal.tsx            # Flyover preview/record (WebM via MediaRecorder)
       MarkerOverlay.ts            # google.maps.OverlayView implementation
       ShareView.tsx               # Read-only map for share/print
       markers/
@@ -102,6 +109,8 @@ prisma/schema.prisma
 - **Rescue zone**: Click to add polygon vertices, double-click to close and create element. Vertices stored as JSON in `metadata` field.
 - **MarkerOverlay**: Extends `google.maps.OverlayView`, renders SVG div positioned via `fromLatLngToDivPixel`, handles drag with mousedown/mousemove/mouseup.
 - **PDF/PNG export**: Puppeteer navigates to `/share/<token>?print=1`, waits for `#map-ready` element, then captures.
+- **Flyover video**: Recorded client-side via `MediaRecorder` + `canvas.captureStream()`. Uploaded to `data/flyovers/` on the server and attached to the share snapshot. The share page only links to the pre-generated video — no live preview or generation.
+- **Data directory**: `data/` stores the SQLite database and `data/flyovers/` stores uploaded flyover videos. Mounted as a Docker volume (`./data:/app/data`) so data persists across container restarts.
 - **Database provider**: Hardcoded to `sqlite` in `prisma/schema.prisma`. Change to `postgresql` and update `DATABASE_URL` for production PostgreSQL.
 
 ## Google Maps — Always Use the New (Places v2) API
@@ -121,7 +130,7 @@ Key properties on `Place`: `displayName`, `location`, `formattedAddress`, `viewp
 
 ```bash
 export DEPLOY_SERVER=user@your-server.com
-export DEPLOY_DIR=/srv/ow-parcour-designer
+export DEPLOY_DIR=/srv/ow-course-designer
 bash deploy.sh
 ```
 

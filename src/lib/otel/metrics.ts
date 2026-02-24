@@ -1,6 +1,6 @@
 import { metrics } from "@opentelemetry/api";
 
-const meter = metrics.getMeter("ow-parcour-designer");
+const meter = metrics.getMeter("ow-course-designer");
 
 export const exportDurationHistogram = meter.createHistogram(
   "export.duration_ms",

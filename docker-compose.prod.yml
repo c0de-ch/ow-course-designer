@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   app:
-    image: ow-parcour-designer:latest
+    image: ow-course-designer:latest
     restart: unless-stopped
     ports:
       - "3000:3000"

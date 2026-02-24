@@ -42,7 +42,7 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 ENV OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
-ENV OTEL_SERVICE_NAME=ow-parcour-designer
+ENV OTEL_SERVICE_NAME=ow-course-designer
 
 # Copy standalone build
 COPY --from=builder /app/.next/standalone ./
@@ -53,5 +53,8 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 EXPOSE 3000
+
+# Create data directory for flyover videos (mount as volume in production)
+RUN mkdir -p /app/data/flyovers
 
 CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
