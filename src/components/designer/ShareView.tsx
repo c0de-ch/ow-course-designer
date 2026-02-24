@@ -160,6 +160,11 @@ export function ShareView({ courseData, isPrint }: Props) {
           </div>
         )}
         <div ref={mapDivRef} className="w-full h-full" style={{ minHeight: "500px" }} />
+        {courseData.distanceKm != null && courseData.distanceKm > 0 && (courseData.laps ?? 1) > 1 && (
+          <div className="absolute bottom-3 right-3 bg-black/60 text-white px-3 py-1.5 rounded text-sm font-medium z-10">
+            Total: {(courseData.distanceKm * (courseData.laps ?? 1)).toFixed(2)} km ({courseData.laps ?? 1} laps)
+          </div>
+        )}
       </div>
     </div>
   );

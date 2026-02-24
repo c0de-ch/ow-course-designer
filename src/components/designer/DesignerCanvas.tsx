@@ -308,6 +308,13 @@ export function DesignerCanvas() {
         </div>
       )}
 
+      {/* Total distance badge */}
+      {courseData.distanceKm != null && courseData.distanceKm > 0 && courseData.laps > 1 && (
+        <div className="absolute bottom-3 right-3 bg-black/60 text-white px-3 py-1.5 rounded text-sm font-medium z-10">
+          Total: {(courseData.distanceKm * courseData.laps).toFixed(2)} km ({courseData.laps} laps)
+        </div>
+      )}
+
       {!mapsLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-base-200">
           <span className="loading loading-spinner loading-lg" />

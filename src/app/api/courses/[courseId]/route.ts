@@ -49,6 +49,7 @@ const putSchema = z.object({
   lakeLatLng: z.string().nullable().optional(),
   zoomLevel: z.number().int().min(1).max(22).optional(),
   distanceKm: z.number().nullable().optional(),
+  laps: z.number().int().min(1).max(100).optional(),
   elements: z.array(elementSchema).optional(),
 });
 
@@ -82,6 +83,7 @@ export async function PUT(
           ...(data.lakeLatLng !== undefined && { lakeLatLng: data.lakeLatLng }),
           ...(data.zoomLevel !== undefined && { zoomLevel: data.zoomLevel }),
           ...(data.distanceKm !== undefined && { distanceKm: data.distanceKm }),
+          ...(data.laps !== undefined && { laps: data.laps }),
         },
       });
 
