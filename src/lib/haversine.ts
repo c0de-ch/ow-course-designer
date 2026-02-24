@@ -32,3 +32,38 @@ export function totalCourseDistanceKm(elements: LatLng[]): number {
   }
   return Math.round(total * 1000) / 1000;
 }
+
+export function computeBearing(from: LatLng, to: LatLng): number {
+  const lat1 = toRad(from.lat);
+  const lat2 = toRad(to.lat);
+  const dLng = toRad(to.lng - from.lng);
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+export function offsetPointPerpendicular(
+  point: LatLng,
+  bearingDeg: number,
+  offsetMeters: number,
+  direction: "left" | "right"
+): LatLng {
+  const perpBearing = direction === "left"
+    ? ((bearingDeg - 90 + 360) % 360)
+    : ((bearingDeg + 90) % 360);
+  const R_METERS = 6371000;
+  const d = offsetMeters / R_METERS;
+  const brng = toRad(perpBearing);
+  const lat1 = toRad(point.lat);
+  const lng1 = toRad(point.lng);
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brng)
+  );
+  const lng2 =
+    lng1 +
+    Math.atan2(
+      Math.sin(brng) * Math.sin(d) * Math.cos(lat1),
+      Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+    );
+  return { lat: (lat2 * 180) / Math.PI, lng: (lng2 * 180) / Math.PI };
+}

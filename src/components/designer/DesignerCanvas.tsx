@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
-import { useCourseStore, BuoySide } from "@/store/courseStore";
+import { useCourseStore, BuoySide, getBuoySide } from "@/store/courseStore";
 import { createMarkerOverlay } from "./MarkerOverlay";
 import { LakeSearch } from "./LakeSearch";
+import { computeBearing, offsetPointPerpendicular } from "@/lib/haversine";
 import { CourseStats } from "./CourseStats";
 
 export function DesignerCanvas() {
@@ -109,11 +110,11 @@ export function DesignerCanvas() {
       overlaysRef.current.push(overlay);
     });
 
-    // Redraw polyline (closed loop, excluding rescue zones)
-    const routePts = courseData.elements
+    // Redraw polyline (closed loop, excluding rescue zones) with swim-side offset
+    const sortedRouteEls = courseData.elements
       .filter((el) => el.type !== "rescue_zone")
-      .sort((a, b) => a.order - b.order)
-      .map((el) => ({ lat: el.lat, lng: el.lng }));
+      .sort((a, b) => a.order - b.order);
+    const routePts = sortedRouteEls.map((el) => ({ lat: el.lat, lng: el.lng }));
 
     if (polylineRef.current) {
       polylineRef.current.setMap(null);
@@ -121,12 +122,23 @@ export function DesignerCanvas() {
     }
 
     if (routePts.length >= 2) {
+      const closedPts = [...routePts, routePts[0]];
+      const offsetPath = closedPts.map((pt, i) => {
+        const el = sortedRouteEls[i % sortedRouteEls.length];
+        const side = el.type === "buoy" ? getBuoySide(el.metadata) : "directional";
+        if (side === "directional") return pt;
+        const prev = closedPts[(i - 1 + closedPts.length) % closedPts.length];
+        const next = closedPts[(i + 1) % closedPts.length];
+        const bearing = computeBearing(prev, next);
+        return offsetPointPerpendicular(pt, bearing, 8, side);
+      });
+
       polylineRef.current = new google.maps.Polyline({
-        path: [...routePts, routePts[0]],
+        path: offsetPath,
         geodesic: true,
         strokeColor: "#3B82F6",
         strokeOpacity: 0.8,
-        strokeWeight: 2,
+        strokeWeight: 4,
         map,
       });
     }

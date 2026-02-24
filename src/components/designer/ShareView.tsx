@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
-import { CourseData } from "@/store/courseStore";
+import { CourseData, getBuoySide } from "@/store/courseStore";
+import { computeBearing, offsetPointPerpendicular } from "@/lib/haversine";
 import { getMarkerSvg } from "./markers/markerIcons";
 import Link from "next/link";
 
@@ -80,16 +81,26 @@ export function ShareView({ courseData, isPrint }: Props) {
       overlay.setMap(map);
     });
 
-    // Polyline
+    // Polyline with swim-side offset
     if (routeElements.length >= 2) {
-      const path = [...routeElements.map((el) => ({ lat: el.lat, lng: el.lng }))];
-      path.push(path[0]); // closed loop
+      const pts = routeElements.map((el) => ({ lat: el.lat, lng: el.lng }));
+      const closedPts = [...pts, pts[0]];
+      const offsetPath = closedPts.map((pt, i) => {
+        const el = routeElements[i % routeElements.length];
+        const side = el.type === "buoy" ? getBuoySide(el.metadata) : "directional";
+        if (side === "directional") return pt;
+        const prev = closedPts[(i - 1 + closedPts.length) % closedPts.length];
+        const next = closedPts[(i + 1) % closedPts.length];
+        const bearing = computeBearing(prev, next);
+        return offsetPointPerpendicular(pt, bearing, 8, side);
+      });
+
       new google.maps.Polyline({
-        path,
+        path: offsetPath,
         geodesic: true,
         strokeColor: "#3B82F6",
         strokeOpacity: 0.8,
-        strokeWeight: 2,
+        strokeWeight: 4,
         map,
       });
 
