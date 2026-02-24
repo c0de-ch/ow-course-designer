@@ -7,7 +7,6 @@ import { DesignerCanvas } from "@/components/designer/DesignerCanvas";
 import { ToolPanel } from "@/components/designer/ToolPanel";
 import { RoutePanel } from "@/components/designer/RoutePanel";
 import { ExportPanel } from "@/components/designer/ExportPanel";
-import { StatusBar } from "@/components/designer/StatusBar";
 import Link from "next/link";
 
 interface Props {
@@ -17,7 +16,7 @@ interface Props {
 export default function DesignerPage({ params }: Props) {
   const { courseId } = use(params);
   const router = useRouter();
-  const { courseData, isDirty, autoSaveEnabled, setCourseData, setDirty, setLastSavedAt, setStatusMessage } = useCourseStore();
+  const { courseData, isDirty, autoSaveEnabled, setAutoSaveEnabled, setCourseData, setDirty, setLastSavedAt, setStatusMessage, lastSavedAt, statusMessage } = useCourseStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [courseName, setCourseName] = useState("");
@@ -137,13 +136,38 @@ export default function DesignerPage({ params }: Props) {
 
         <div className="flex-1" />
 
-        <button
-          onClick={saveCourse}
-          disabled={saving || !isDirty}
-          className="btn btn-sm btn-primary"
-        >
-          {saving ? "Saving…" : "Save"}
-        </button>
+        {/* Save status text */}
+        <span className="text-xs text-base-content/50">
+          {statusMessage
+            ? statusMessage
+            : isDirty
+              ? "Unsaved changes"
+              : lastSavedAt
+                ? `Saved ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                : null}
+        </span>
+
+        {/* Auto-save toggle */}
+        <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+          <span className="text-base-content/60">Auto-save</span>
+          <input
+            type="checkbox"
+            className="toggle toggle-xs toggle-primary"
+            checked={autoSaveEnabled}
+            onChange={(e) => setAutoSaveEnabled(e.target.checked)}
+          />
+        </label>
+
+        {/* Manual save — only shown when auto-save is off */}
+        {!autoSaveEnabled && (
+          <button
+            onClick={saveCourse}
+            disabled={saving || !isDirty}
+            className="btn btn-sm btn-primary"
+          >
+            {saving ? "Saving..." : "Save"}
+          </button>
+        )}
       </header>
 
       {/* Body */}
@@ -162,8 +186,6 @@ export default function DesignerPage({ params }: Props) {
         </main>
       </div>
 
-      {/* Status bar */}
-      <StatusBar />
     </div>
   );
 }

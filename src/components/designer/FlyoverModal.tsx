@@ -18,6 +18,7 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
   const [duration, setDuration] = useState(20);
   const [status, setStatus] = useState<"idle" | "previewing" | "recording" | "done">("idle");
   const [progress, setProgress] = useState(0);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const framesRef = useRef<CameraFrame[]>([]);
@@ -25,7 +26,7 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
 
   const { courseData } = useCourseStore();
 
-  const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID;
+  const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || undefined;
 
   useEffect(() => {
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
@@ -35,7 +36,6 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
 
   useEffect(() => {
     if (!mapsLoaded || !mapDivRef.current || mapRef.current) return;
-    if (!mapId) return;
 
     const center = courseData.lakeLatLng
       ? (() => {
@@ -44,14 +44,19 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
         })()
       : { lat: 46.8182, lng: 8.2275 };
 
-    const map = new google.maps.Map(mapDivRef.current, {
+    const mapOptions: google.maps.MapOptions = {
       center,
       zoom: courseData.zoomLevel ?? 14,
       mapTypeId: "satellite",
       disableDefaultUI: true,
-      mapId,
-    });
+    };
 
+    // Only pass mapId if it looks like a valid ID (not a placeholder)
+    if (mapId && mapId.length > 5) {
+      mapOptions.mapId = mapId;
+    }
+
+    const map = new google.maps.Map(mapDivRef.current, mapOptions);
     mapRef.current = map;
 
     // Draw route polyline
@@ -103,6 +108,12 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
     // Build camera path
     const routePts = routeElements.map((el) => ({ lat: el.lat, lng: el.lng }));
     framesRef.current = buildCameraPath(routePts, duration);
+
+    if (framesRef.current.length === 0) {
+      setStatusMsg("Need at least 2 route points for flyover");
+    } else {
+      setStatusMsg(`Ready — ${framesRef.current.length} frames (${duration}s)`);
+    }
   }, [mapsLoaded, courseData, mapId, duration]);
 
   const handlePreview = useCallback(async () => {
@@ -110,7 +121,12 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
     abortRef.current = false;
     setStatus("previewing");
     setProgress(0);
-    await previewFlyover(mapRef.current, framesRef.current, 30, setProgress);
+    setError(null);
+    try {
+      await previewFlyover(mapRef.current, framesRef.current, 30, setProgress, setStatusMsg);
+    } catch (err) {
+      setError((err as Error).message);
+    }
     if (!abortRef.current) setStatus("idle");
   }, []);
 
@@ -120,10 +136,11 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
     setProgress(0);
     setError(null);
     try {
-      const blob = await recordFlyover(mapRef.current, framesRef.current, 30, setProgress);
+      const blob = await recordFlyover(mapRef.current, framesRef.current, 30, setProgress, setStatusMsg);
       const url = URL.createObjectURL(blob);
       setVideoUrl(url);
       setStatus("done");
+      setStatusMsg("Recording complete! Click Download.");
     } catch (err) {
       setError((err as Error).message);
       setStatus("idle");
@@ -144,15 +161,26 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
     onClose();
   }
 
+  const hasFrames = framesRef.current.length > 0;
+
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-4 px-4 py-3 bg-base-100">
-        <h2 className="text-lg font-bold flex-1">Flyover Preview</h2>
+        <h2 className="text-lg font-bold">Flyover</h2>
 
-        {!mapId && (
+        {/* Status message */}
+        {statusMsg && (
+          <span className="text-xs text-base-content/60 truncate">
+            {statusMsg}
+          </span>
+        )}
+
+        <div className="flex-1" />
+
+        {(!mapId || mapId.length <= 5) && (
           <span className="text-xs text-warning">
-            Set NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID for 3D tilt/heading support
+            Set NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID for 3D + recording
           </span>
         )}
 
@@ -161,7 +189,11 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
           <select
             className="select select-xs"
             value={duration}
-            onChange={(e) => setDuration(Number(e.target.value))}
+            onChange={(e) => {
+              setDuration(Number(e.target.value));
+              // Rebuild frames on next render via useEffect
+              mapRef.current = null;
+            }}
             disabled={status !== "idle"}
           >
             <option value={10}>10s</option>
@@ -172,18 +204,18 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
 
         <button
           onClick={handlePreview}
-          disabled={status !== "idle" || !mapId}
+          disabled={status !== "idle" || !hasFrames}
           className="btn btn-sm btn-primary"
         >
-          Preview
+          {status === "previewing" ? "Previewing..." : "Preview"}
         </button>
 
         <button
           onClick={handleRecord}
-          disabled={status !== "idle" || !mapId}
+          disabled={status !== "idle" || !hasFrames}
           className="btn btn-sm btn-secondary"
         >
-          Record
+          {status === "recording" ? "Recording..." : "Record"}
         </button>
 
         {status === "done" && (
@@ -199,7 +231,7 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
 
       {/* Progress bar */}
       {(status === "previewing" || status === "recording") && (
-        <div className="w-full bg-base-300 h-1">
+        <div className="w-full bg-base-300 h-1.5">
           <div
             className="h-full bg-primary transition-all duration-100"
             style={{ width: `${Math.round(progress * 100)}%` }}
