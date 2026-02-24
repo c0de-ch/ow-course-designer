@@ -7,6 +7,7 @@ import { DesignerCanvas } from "@/components/designer/DesignerCanvas";
 import { ToolPanel } from "@/components/designer/ToolPanel";
 import { RoutePanel } from "@/components/designer/RoutePanel";
 import { ExportPanel } from "@/components/designer/ExportPanel";
+import { StatusBar } from "@/components/designer/StatusBar";
 import Link from "next/link";
 
 interface Props {
@@ -16,7 +17,7 @@ interface Props {
 export default function DesignerPage({ params }: Props) {
   const { courseId } = use(params);
   const router = useRouter();
-  const { courseData, isDirty, setCourseData, setDirty } = useCourseStore();
+  const { courseData, isDirty, autoSaveEnabled, setCourseData, setDirty, setLastSavedAt, setStatusMessage } = useCourseStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [courseName, setCourseName] = useState("");
@@ -48,7 +49,7 @@ export default function DesignerPage({ params }: Props) {
 
   // Auto-save with debounce
   useEffect(() => {
-    if (!isDirty || loading) return;
+    if (!autoSaveEnabled || !isDirty || loading) return;
 
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
@@ -59,7 +60,7 @@ export default function DesignerPage({ params }: Props) {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDirty, courseData]);
+  }, [isDirty, courseData, autoSaveEnabled]);
 
   // Warn on navigation away with unsaved changes
   useEffect(() => {
@@ -74,6 +75,7 @@ export default function DesignerPage({ params }: Props) {
 
   async function saveCourse() {
     setSaving(true);
+    setStatusMessage("Saving...");
     try {
       await fetch(`/api/courses/${courseId}`, {
         method: "PUT",
@@ -88,6 +90,8 @@ export default function DesignerPage({ params }: Props) {
         }),
       });
       setDirty(false);
+      setLastSavedAt(new Date());
+      setStatusMessage(null);
     } finally {
       setSaving(false);
     }
@@ -127,10 +131,6 @@ export default function DesignerPage({ params }: Props) {
 
         <div className="flex-1" />
 
-        {isDirty && (
-          <span className="text-xs text-base-content/50 italic">Unsaved changes</span>
-        )}
-
         <button
           onClick={saveCourse}
           disabled={saving || !isDirty}
@@ -155,6 +155,9 @@ export default function DesignerPage({ params }: Props) {
           <DesignerCanvas />
         </main>
       </div>
+
+      {/* Status bar */}
+      <StatusBar />
     </div>
   );
 }

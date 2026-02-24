@@ -72,6 +72,12 @@ interface CourseStore {
   isDirty: boolean;
   gateFirstClick: GateFirstClick | null;
   rescueZonePoints: { lat: number; lng: number }[];
+  autoSaveEnabled: boolean;
+  lastSavedAt: Date | null;
+  statusMessage: string | null;
+  setAutoSaveEnabled: (enabled: boolean) => void;
+  setLastSavedAt: (d: Date) => void;
+  setStatusMessage: (msg: string | null) => void;
 
   setActiveTool: (tool: ActiveTool) => void;
   setSelectedElementId: (id: string | null) => void;
@@ -107,6 +113,9 @@ export const useCourseStore = create<CourseStore>((set, get) => ({
   isDirty: false,
   gateFirstClick: null,
   rescueZonePoints: [],
+  autoSaveEnabled: true,
+  lastSavedAt: null,
+  statusMessage: null,
 
   setActiveTool: (tool) =>
     set({ activeTool: tool, gateFirstClick: null, rescueZonePoints: [] }),
@@ -123,6 +132,9 @@ export const useCourseStore = create<CourseStore>((set, get) => ({
     set((s) => ({ rescueZonePoints: [...s.rescueZonePoints, pt] })),
 
   clearRescueZonePoints: () => set({ rescueZonePoints: [] }),
+  setAutoSaveEnabled: (enabled) => set({ autoSaveEnabled: enabled }),
+  setLastSavedAt: (d) => set({ lastSavedAt: d }),
+  setStatusMessage: (msg) => set({ statusMessage: msg }),
 
   addElement: (el) => {
     const { courseData } = get();
@@ -192,5 +204,8 @@ export const useCourseStore = create<CourseStore>((set, get) => ({
       isDirty: false,
       gateFirstClick: null,
       rescueZonePoints: [],
+      autoSaveEnabled: true,
+      lastSavedAt: null,
+      statusMessage: null,
     }),
 }));
