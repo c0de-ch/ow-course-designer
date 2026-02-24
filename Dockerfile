@@ -41,6 +41,8 @@ RUN apk add --no-cache \
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+ENV OTEL_SERVICE_NAME=ow-parcour-designer
 
 # Copy standalone build
 COPY --from=builder /app/.next/standalone ./
