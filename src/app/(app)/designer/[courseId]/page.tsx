@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCourseStore } from "@/store/courseStore";
 import { DesignerCanvas } from "@/components/designer/DesignerCanvas";
 import { ToolPanel } from "@/components/designer/ToolPanel";
+import { RoutePanel } from "@/components/designer/RoutePanel";
 import { ExportPanel } from "@/components/designer/ExportPanel";
 import Link from "next/link";
 
@@ -144,6 +145,7 @@ export default function DesignerPage({ params }: Props) {
         {/* Left sidebar */}
         <aside className="w-48 bg-base-100 border-r border-base-300 flex flex-col overflow-y-auto z-10">
           <ToolPanel />
+          <RoutePanel />
           <div className="flex-1" />
           <ExportPanel courseId={courseId} />
         </aside>

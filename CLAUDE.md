@@ -8,9 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Tech Stack
 
-- **Next.js 15** (App Router, TypeScript, `output: 'standalone'`), **Yarn**
+- **Next.js 16** (App Router, TypeScript, `output: 'standalone'`), **Yarn**, **React 19**
 - **Ripple UI** (TailwindCSS v3 component library)
-- **Google Maps JS API** — Maps + Places Autocomplete
+- **Google Maps JS API** — Maps + Places (New) API
 - **Prisma ORM** — SQLite (dev/prod default), PostgreSQL via schema edit
 - **NextAuth.js v4** — Credentials (email/password) + Google OAuth, JWT sessions
 - **Zustand** — client state for the designer canvas
@@ -103,6 +103,19 @@ prisma/schema.prisma
 - **MarkerOverlay**: Extends `google.maps.OverlayView`, renders SVG div positioned via `fromLatLngToDivPixel`, handles drag with mousedown/mousemove/mouseup.
 - **PDF/PNG export**: Puppeteer navigates to `/share/<token>?print=1`, waits for `#map-ready` element, then captures.
 - **Database provider**: Hardcoded to `sqlite` in `prisma/schema.prisma`. Change to `postgresql` and update `DATABASE_URL` for production PostgreSQL.
+
+## Google Maps — Always Use the New (Places v2) API
+
+When working with Places, **always** use the new API classes — never the legacy `AutocompleteService`, `PlacesService`, or `PlaceAutocompleteElement`.
+
+| Task | New API |
+|------|---------|
+| Autocomplete suggestions | `google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions()` |
+| Get place details | `placePrediction.toPlace()` then `place.fetchFields({ fields: [...] })` |
+| Text search | `google.maps.places.Place.searchByText()` |
+| Session tokens | `new google.maps.places.AutocompleteSessionToken()` — create a new token after each selection |
+
+Key properties on `Place`: `displayName`, `location`, `formattedAddress`, `viewport`.
 
 ## Deployment
 

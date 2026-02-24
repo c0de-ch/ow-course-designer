@@ -8,7 +8,27 @@ export type ElementType =
   | "gate_left"
   | "gate_right"
   | "shore_entry"
-  | "rescue_zone";
+  | "rescue_zone"
+  | "feeding_platform";
+
+export type BuoySide = "left" | "right" | "directional";
+
+export function getBuoySide(metadata?: string | null): BuoySide {
+  try {
+    const m = metadata ? JSON.parse(metadata) : null;
+    if (m?.side === "left" || m?.side === "right") return m.side;
+  } catch {}
+  return "directional";
+}
+
+export function setBuoySideInMeta(metadata: string | null | undefined, side: BuoySide): string {
+  let existing: Record<string, unknown> = {};
+  try {
+    const parsed = metadata ? JSON.parse(metadata) : null;
+    if (parsed && !Array.isArray(parsed)) existing = parsed;
+  } catch {}
+  return JSON.stringify({ ...existing, side });
+}
 
 export type ActiveTool =
   | "select"
@@ -17,7 +37,8 @@ export type ActiveTool =
   | "finish"
   | "gate"
   | "shore_entry"
-  | "rescue_zone";
+  | "rescue_zone"
+  | "feeding_platform";
 
 export interface CourseElement {
   id: string;
@@ -62,6 +83,7 @@ interface CourseStore {
 
   addElement: (el: Omit<CourseElement, "id" | "order">) => void;
   updateElementPosition: (id: string, lat: number, lng: number) => void;
+  updateElementMeta: (id: string, meta: string | null) => void;
   removeElement: (id: string) => void;
   reorderElements: (elements: CourseElement[]) => void;
   computeDistance: () => void;
@@ -128,6 +150,14 @@ export const useCourseStore = create<CourseStore>((set, get) => ({
     );
     set({ courseData: { ...courseData, elements }, isDirty: true });
     get().computeDistance();
+  },
+
+  updateElementMeta: (id, meta) => {
+    const { courseData } = get();
+    const elements = courseData.elements.map((el) =>
+      el.id === id ? { ...el, metadata: meta } : el
+    );
+    set({ courseData: { ...courseData, elements }, isDirty: true });
   },
 
   removeElement: (id) => {

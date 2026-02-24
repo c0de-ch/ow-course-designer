@@ -3,12 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { encodeCourseData } from "@/lib/course-encoder";
+import { launchBrowser } from "@/lib/puppeteer";
 import { CourseData } from "@/store/courseStore";
-
-async function getPuppeteer() {
-  const puppeteer = await import("puppeteer");
-  return puppeteer.default;
-}
 
 export async function GET(
   _req: NextRequest,
@@ -56,14 +52,7 @@ export async function GET(
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const printUrl = `${appUrl}/share/${snapshot.token}?print=1`;
 
-  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-  const puppeteer = await getPuppeteer();
-
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  });
+  const browser = await launchBrowser();
 
   try {
     const page = await browser.newPage();

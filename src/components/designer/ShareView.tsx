@@ -47,7 +47,7 @@ export function ShareView({ courseData, isPrint }: Props) {
     // Place overlays
     const routeElements = courseData.elements.filter((el) => el.type !== "rescue_zone");
     routeElements.forEach((el) => {
-      const svgHtml = getMarkerSvg(el.type, false);
+      const svgHtml = getMarkerSvg(el.type, false, el.metadata);
       const tempDiv = document.createElement("div");
       tempDiv.innerHTML = svgHtml;
       const svgEl = tempDiv.firstElementChild as SVGSVGElement;
