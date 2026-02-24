@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useCourseStore } from "@/store/courseStore";
 import { getMarkerSvg } from "./markers/markerIcons";
-import { buildCameraPath, CameraFrame } from "@/lib/flyover/cameraPath";
+import { buildCameraPath, type CameraFrame } from "@/lib/flyover/cameraPath";
+
+const SWIMMER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="16" cy="4" r="2" fill="#3B82F6" stroke="#3B82F6"/>
+  <path d="M2 20c1.5-1 3.5-1 5 0s3.5 1 5 0 3.5-1 5 0 3.5 1 5 0" stroke="#3B82F6" stroke-width="2.5"/>
+  <path d="M6 16l2-2 4.5-1.5L15 10" stroke="#3B82F6" stroke-width="2"/>
+  <path d="M11.5 12.5L9 15" stroke="#3B82F6" stroke-width="2"/>
+</svg>`;
 
 interface FlyoverModalProps {
   onClose: () => void;
@@ -21,6 +28,9 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
   const [error, setError] = useState<string | null>(null);
   const framesRef = useRef<CameraFrame[]>([]);
   const abortRef = useRef(false);
+  const swimmerOverlayRef = useRef<google.maps.OverlayView | null>(null);
+  const swimmerDivRef = useRef<HTMLDivElement | null>(null);
+  const swimmerPosRef = useRef<google.maps.LatLng | null>(null);
 
   const { courseData } = useCourseStore();
   const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || undefined;
@@ -104,6 +114,31 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
         overlay.setMap(map);
       });
 
+      // Create swimmer overlay
+      const swimmerOverlay = new google.maps.OverlayView();
+      swimmerOverlay.onAdd = function () {
+        const div = document.createElement("div");
+        div.style.cssText =
+          "position:absolute;transform:translate(-50%,-50%);pointer-events:none;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6));display:none;";
+        div.innerHTML = SWIMMER_SVG;
+        this.getPanes()!.overlayLayer.appendChild(div);
+        swimmerDivRef.current = div;
+      };
+      swimmerOverlay.draw = function () {
+        if (!swimmerPosRef.current || !swimmerDivRef.current) return;
+        const pt = this.getProjection().fromLatLngToDivPixel(swimmerPosRef.current);
+        if (pt) {
+          swimmerDivRef.current.style.left = `${pt.x}px`;
+          swimmerDivRef.current.style.top = `${pt.y}px`;
+        }
+      };
+      swimmerOverlay.onRemove = function () {
+        swimmerDivRef.current?.parentNode?.removeChild(swimmerDivRef.current);
+        swimmerDivRef.current = null;
+      };
+      swimmerOverlay.setMap(map);
+      swimmerOverlayRef.current = swimmerOverlay;
+
       // Build camera path
       const routePts = routeElements.map((el) => ({
         lat: el.lat,
@@ -133,6 +168,20 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
     }
   }, [duration, mapReady, courseData.elements]);
 
+  const moveSwimmer = useCallback((pos: google.maps.LatLngLiteral) => {
+    swimmerPosRef.current = new google.maps.LatLng(pos.lat, pos.lng);
+    if (swimmerDivRef.current) {
+      swimmerDivRef.current.style.display = "block";
+    }
+    swimmerOverlayRef.current?.draw();
+  }, []);
+
+  const hideSwimmer = useCallback(() => {
+    if (swimmerDivRef.current) {
+      swimmerDivRef.current.style.display = "none";
+    }
+  }, []);
+
   const handlePreview = useCallback(async () => {
     const map = mapRef.current;
     if (!map || framesRef.current.length === 0) return;
@@ -159,13 +208,15 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
         map.setCenter(f.center);
         map.setZoom(f.zoom);
       }
+      moveSwimmer(f.swimmerPos);
       setProgress(i / frames.length);
       await new Promise((r) => setTimeout(r, interval));
     }
     setProgress(1);
+    hideSwimmer();
     setStatusMsg("Preview complete");
     if (!abortRef.current) setStatus("idle");
-  }, []);
+  }, [moveSwimmer, hideSwimmer]);
 
   const handleRecord = useCallback(async () => {
     const map = mapRef.current;
@@ -228,6 +279,7 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
           map.setCenter(f.center);
           map.setZoom(f.zoom);
         }
+        moveSwimmer(f.swimmerPos);
 
         // Wait for tiles
         await new Promise<void>((resolve) => {
@@ -248,6 +300,7 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
         }
       }
 
+      hideSwimmer();
       setStatusMsg("Finalizing video...");
       recorder.stop();
       await stopped;
@@ -275,7 +328,7 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
       setError((err as Error).message);
       setStatus("idle");
     }
-  }, []);
+  }, [moveSwimmer, hideSwimmer]);
 
   function handleDownload() {
     if (!videoUrl) return;

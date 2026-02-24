@@ -5,6 +5,7 @@ export interface CameraFrame {
   heading: number;
   tilt: number;
   zoom: number;
+  swimmerPos: google.maps.LatLngLiteral;
 }
 
 function toRad(deg: number): number {
@@ -123,6 +124,7 @@ export function buildCameraPath(
       heading: smoothHeadings[f],
       tilt: TILT,
       zoom: ZOOM,
+      swimmerPos: { lat: positions[f].lat, lng: positions[f].lng },
     });
   }
 
