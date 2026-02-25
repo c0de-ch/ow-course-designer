@@ -162,7 +162,7 @@ export default function DesignerPage({ params }: Props) {
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar */}
-        <aside className="w-48 bg-base-100 border-r border-base-300 flex flex-col overflow-y-auto z-10">
+        <aside className="w-64 bg-base-100 border-r border-base-300 flex flex-col overflow-y-auto z-10">
           <ToolPanel />
           <RoutePanel />
           <div className="flex-1" />

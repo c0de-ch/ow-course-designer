@@ -140,8 +140,8 @@ export function RoutePanel() {
   }
 
   return (
-    <div className="p-2">
-      <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide px-2 py-1">
+    <div className="p-3 border-t border-base-300">
+      <p className="text-sm font-bold text-base-content/70 uppercase tracking-wide px-2 py-1">
         Route Order
       </p>
       <div className="flex flex-col gap-0.5">
@@ -155,7 +155,7 @@ export function RoutePanel() {
             onDragEnd={handleDragEnd}
             onClick={() => setSelectedElementId(el.id)}
             className={[
-              "flex items-center gap-1.5 px-1 py-0.5 rounded cursor-pointer text-xs select-none",
+              "flex items-center gap-2 px-2 py-1 rounded-lg cursor-pointer text-sm select-none transition-colors",
               selectedElementId === el.id
                 ? "bg-primary/10 ring-1 ring-primary"
                 : "hover:bg-base-200",
@@ -167,14 +167,14 @@ export function RoutePanel() {
               {i + 1}
             </span>
             <span
-              className="w-2 h-2 rounded-full shrink-0"
+              className="w-2.5 h-2.5 rounded-full shrink-0"
               style={{ background: TYPE_COLORS[el.type] }}
             />
             <span className="truncate text-base-content/80">
               {TYPE_LABELS[el.type]}
             </span>
             {el.label && (
-              <span className="truncate text-base-content/50 ml-auto text-[10px]">
+              <span className="truncate text-base-content/50 ml-auto text-xs">
                 {el.label}
               </span>
             )}
@@ -192,7 +192,7 @@ export function RoutePanel() {
             value={lapsValue}
             onChange={(e) => handleLapsChange(e.target.value)}
             placeholder="1,3"
-            className="input input-xs input-bordered w-full"
+            className="input input-sm input-bordered w-full"
           />
         </div>
       )}
@@ -206,7 +206,7 @@ export function RoutePanel() {
               selectedEl.id,
               setBuoySideInMeta(selectedEl.metadata, e.target.value as BuoySide)
             )}
-            className="select select-xs select-bordered w-full"
+            className="select select-sm select-bordered w-full"
           >
             <option value="left">{"\u2190"} Left (Red)</option>
             <option value="directional">{"\u2191"} Directional (Yellow)</option>

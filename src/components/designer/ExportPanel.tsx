@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { FlyoverModal } from "./FlyoverModal";
-import { CoordinateListModal } from "./CoordinateListModal";
+import { ExportModal } from "./ExportModal";
 
 interface ExportPanelProps {
   courseId: string;
@@ -14,9 +14,8 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareStep, setShareStep] = useState<string | null>(null);
   const [copying, setCopying] = useState(false);
-  const [exporting, setExporting] = useState<string | null>(null);
   const [showFlyover, setShowFlyover] = useState(false);
-  const [showCoordList, setShowCoordList] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [hasFlyover, setHasFlyover] = useState(false);
   const flyoverBlobRef = useRef<Blob | null>(null);
 
@@ -89,95 +88,56 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
     setTimeout(() => setCopying(false), 2000);
   }
 
-  function downloadFrom(url: string) {
-    const a = document.createElement("a");
-    a.href = url;
-    a.click();
-  }
-
   function handleVideoReady(blob: Blob) {
     flyoverBlobRef.current = blob;
     setHasFlyover(true);
   }
 
   return (
-    <div className="p-2 border-t border-base-300">
-      <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide px-2 py-1">
-        Export
+    <div className="p-3 border-t border-base-300">
+      <p className="text-sm font-bold text-base-content/70 uppercase tracking-wide px-2 py-1">
+        Actions
       </p>
 
-      <button
-        onClick={() => downloadFrom(`/api/courses/${courseId}/export/gpx`)}
-        className="btn btn-ghost btn-sm justify-start gap-2 w-full font-normal"
-      >
-        <span className="text-base">📍</span> GPX
-      </button>
+      <div className="flex flex-col gap-1.5">
+        <button
+          onClick={() => setShowExportModal(true)}
+          className="btn btn-primary justify-start gap-3 w-full font-normal transition-all duration-150"
+        >
+          <span className="text-lg w-6 text-center">📦</span>
+          <span>Export</span>
+        </button>
 
-      <button
-        onClick={() => downloadFrom(`/api/courses/${courseId}/export/kml`)}
-        className="btn btn-ghost btn-sm justify-start gap-2 w-full font-normal"
-      >
-        <span className="text-base">🌍</span> KML
-      </button>
+        <button
+          onClick={() => setShowFlyover(true)}
+          className="btn btn-ghost justify-start gap-3 w-full font-normal transition-all duration-150"
+        >
+          <span className="text-lg w-6 text-center">🎬</span>
+          <span>Flyover Video</span>
+          {hasFlyover && <span className="badge badge-xs badge-success ml-auto">ready</span>}
+        </button>
 
-      <button
-        onClick={() => setShowCoordList(true)}
-        className="btn btn-ghost btn-sm justify-start gap-2 w-full font-normal"
-      >
-        <span className="text-base">📋</span> Coordinates
-      </button>
+        <button
+          onClick={handleShare}
+          className="btn btn-ghost justify-start gap-3 w-full font-normal transition-all duration-150"
+        >
+          <span className="text-lg w-6 text-center">🔗</span>
+          <span>{hasFlyover ? "Share (+ flyover)" : "Share Link"}</span>
+        </button>
+      </div>
 
-      <button
-        onClick={async () => {
-          setExporting("pdf");
-          downloadFrom(`/api/courses/${courseId}/export/pdf`);
-          setTimeout(() => setExporting(null), 3000);
-        }}
-        disabled={exporting === "pdf"}
-        className="btn btn-ghost btn-sm justify-start gap-2 w-full font-normal"
-      >
-        <span className="text-base">📄</span>
-        {exporting === "pdf" ? "Generating…" : "PDF"}
-      </button>
-
-      <button
-        onClick={async () => {
-          setExporting("png");
-          downloadFrom(`/api/courses/${courseId}/export/png`);
-          setTimeout(() => setExporting(null), 3000);
-        }}
-        disabled={exporting === "png"}
-        className="btn btn-ghost btn-sm justify-start gap-2 w-full font-normal"
-      >
-        <span className="text-base">🖼</span>
-        {exporting === "png" ? "Generating…" : "PNG"}
-      </button>
-
-      <button
-        onClick={() => setShowFlyover(true)}
-        className="btn btn-ghost btn-sm justify-start gap-2 w-full font-normal"
-      >
-        <span className="text-base">🎬</span> Flyover Video
-        {hasFlyover && <span className="badge badge-xs badge-success ml-1">ready</span>}
-      </button>
-
-      <button
-        onClick={handleShare}
-        className="btn btn-ghost btn-sm justify-start gap-2 w-full font-normal"
-      >
-        <span className="text-base">🔗</span>
-        {hasFlyover ? "Share link (+ flyover)" : "Share link"}
-      </button>
+      {showExportModal && (
+        <ExportModal
+          courseId={courseId}
+          onClose={() => setShowExportModal(false)}
+        />
+      )}
 
       {showFlyover && (
         <FlyoverModal
           onClose={() => setShowFlyover(false)}
           onVideoReady={handleVideoReady}
         />
-      )}
-
-      {showCoordList && (
-        <CoordinateListModal onClose={() => setShowCoordList(false)} />
       )}
 
       {/* Share modal */}

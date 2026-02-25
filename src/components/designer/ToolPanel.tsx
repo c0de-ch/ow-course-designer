@@ -25,8 +25,8 @@ export function ToolPanel() {
     useCourseStore();
 
   return (
-    <div className="flex flex-col gap-1 p-2">
-      <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide px-2 py-1">
+    <div className="flex flex-col gap-1.5 p-3">
+      <p className="text-sm font-bold text-base-content/70 uppercase tracking-wide px-2 py-1">
         Tools
       </p>
       {TOOLS.map((tool) => (
@@ -34,13 +34,13 @@ export function ToolPanel() {
           key={tool.id}
           onClick={() => setActiveTool(tool.id)}
           title={tool.description}
-          className={`btn btn-sm justify-start gap-2 font-normal ${
+          className={`btn justify-start gap-3 font-normal transition-all duration-150 ${
             activeTool === tool.id
-              ? "btn-primary"
+              ? "btn-primary shadow-md ring-2 ring-primary/30"
               : "btn-ghost"
           }`}
         >
-          <span className="text-base w-5 text-center">{tool.icon}</span>
+          <span className="text-lg w-6 text-center">{tool.icon}</span>
           <span>{tool.label}</span>
         </button>
       ))}
@@ -52,9 +52,9 @@ export function ToolPanel() {
             onClick={() => {
               removeElement(selectedElementId);
             }}
-            className="btn btn-sm btn-error btn-outline justify-start gap-2"
+            className="btn btn-error btn-outline justify-start gap-3 transition-all duration-150"
           >
-            <span className="text-base">🗑</span>
+            <span className="text-lg w-6 text-center">🗑</span>
             <span>Delete selected</span>
           </button>
         </>
