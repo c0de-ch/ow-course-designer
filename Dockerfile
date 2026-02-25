@@ -2,8 +2,8 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 
-COPY package.json yarn.lock* package-lock.json* ./
-RUN npm install --frozen-lockfile
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile
 
 
 # Stage 2: Build
@@ -22,7 +22,7 @@ ENV NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=placeholder
 ENV NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 RUN npx prisma generate
-RUN npm run build
+RUN yarn build
 
 
 # Stage 3: Runtime
