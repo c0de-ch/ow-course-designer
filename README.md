@@ -47,21 +47,21 @@ The app runs as a Docker container on port **3010** behind Cloudflare proxy (HTT
 
 ```bash
 # As root on the server
-adduser --system --group --home /srv/ow-course-designer --shell /bin/bash owdesigner
+adduser --system --group --home /srv/ow-course-designer --shell /bin/bash owcourse
 
 # Add to docker group so it can manage containers
-usermod -aG docker owdesigner
+usermod -aG docker owcourse
 
 # Create app and data directories
 mkdir -p /srv/ow-course-designer/data/flyovers
-chown -R owdesigner:owdesigner /srv/ow-course-designer
+chown -R owcourse:owcourse /srv/ow-course-designer
 ```
 
 Set up SSH key access for deployments (from your local machine or GitHub Actions):
 
 ```bash
 # On your local machine — copy your public key to the server
-ssh-copy-id owdesigner@your-server.com
+ssh-copy-id owcourse@ow-course-designer.c0de.ch
 ```
 
 ---
@@ -114,8 +114,8 @@ ssh-copy-id owdesigner@your-server.com
 ### 4. Server: Environment File
 
 ```bash
-# On the server as owdesigner
-sudo -u owdesigner bash
+# On the server as owcourse
+sudo -u owcourse bash
 cd /srv/ow-course-designer
 
 cat > .env <<'EOF'
@@ -158,22 +158,23 @@ The container binds to port **3010** on the host. Cloudflare handles HTTPS termi
 #### Manual Deploy
 
 ```bash
-export DEPLOY_SERVER=owdesigner@your-server.com
-export DEPLOY_DIR=/srv/ow-course-designer
-bash deploy.sh
+DEPLOY_SERVER=owcourse@ow-course-designer.c0de.ch bash deploy.sh
 ```
+
+Requires Docker installed locally and SSH access to the server.
 
 #### Auto Deploy (GitHub Actions)
 
 Pushes to `main` trigger `.github/workflows/deploy.yml` which builds the Docker image, copies it to the server, and restarts the container.
 
-**Required GitHub Secrets:**
+**Required GitHub Secrets** (Settings → Secrets and variables → Actions):
 
 | Secret | Description |
 |--------|-------------|
-| `DEPLOY_HOST` | Server hostname or IP |
-| `DEPLOY_USER` | `owdesigner` |
-| `DEPLOY_SSH_KEY` | SSH private key for the `owdesigner` user |
+| `DEPLOY_HOST` | `ow-course-designer.c0de.ch` |
+| `DEPLOY_USER` | `owcourse` |
+| `DEPLOY_SSH_KEY` | SSH private key for the `owcourse` user |
+| `DEPLOY_SERVER` | `owcourse@ow-course-designer.c0de.ch` (used by `deploy.sh` for manual/CI deploys) |
 
 ### Data Volumes
 
