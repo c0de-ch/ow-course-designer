@@ -191,17 +191,49 @@ export function ShareView({ courseData, isPrint, token, flyoverUrl }: Props) {
       });
     }
 
-    // Finish funnel connecting line
-    if (parts.finishFunnelLeft && parts.finishFunnelRight) {
+    // Finish funnel lanes: lines from each funnel post to the finish endpoint
+    if (parts.finishEndpoint && parts.finishFunnelLeft && parts.finishFunnelRight) {
+      const ep = { lat: parts.finishEndpoint.lat, lng: parts.finishEndpoint.lng };
+      const fl = { lat: parts.finishFunnelLeft.lat, lng: parts.finishFunnelLeft.lng };
+      const fr = { lat: parts.finishFunnelRight.lat, lng: parts.finishFunnelRight.lng };
+
+      // Connecting line between funnel posts (the wide opening)
       new google.maps.Polyline({
-        path: [
-          { lat: parts.finishFunnelLeft.lat, lng: parts.finishFunnelLeft.lng },
-          { lat: parts.finishFunnelRight.lat, lng: parts.finishFunnelRight.lng },
-        ],
+        path: [fl, fr],
         geodesic: true,
         strokeColor: "#EF4444",
         strokeOpacity: 0.9,
         strokeWeight: 3,
+        map,
+      });
+
+      // Left lane: funnel_left → finish endpoint
+      new google.maps.Polyline({
+        path: [fl, ep],
+        geodesic: true,
+        strokeColor: "#EF4444",
+        strokeOpacity: 0.7,
+        strokeWeight: 2,
+        icons: [{
+          icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 2 },
+          offset: "0",
+          repeat: "10px",
+        }],
+        map,
+      });
+
+      // Right lane: funnel_right → finish endpoint
+      new google.maps.Polyline({
+        path: [fr, ep],
+        geodesic: true,
+        strokeColor: "#EF4444",
+        strokeOpacity: 0.7,
+        strokeWeight: 2,
+        icons: [{
+          icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 2 },
+          offset: "0",
+          repeat: "10px",
+        }],
         map,
       });
     }

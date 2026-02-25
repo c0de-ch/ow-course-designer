@@ -18,7 +18,7 @@ export function DesignerCanvas() {
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const entryLineRef = useRef<google.maps.Polyline | null>(null);
   const exitLineRef = useRef<google.maps.Polyline | null>(null);
-  const funnelLineRef = useRef<google.maps.Polyline | null>(null);
+  const funnelLinesRef = useRef<google.maps.Polyline[]>([]);
   const overlaysRef = useRef<google.maps.OverlayView[]>([]);
   const rescuePolyRef = useRef<google.maps.Polygon | null>(null);
   const rescuePreviewRef = useRef<google.maps.Polyline | null>(null);
@@ -136,7 +136,8 @@ export function DesignerCanvas() {
     if (polylineRef.current) { polylineRef.current.setMap(null); polylineRef.current = null; }
     if (entryLineRef.current) { entryLineRef.current.setMap(null); entryLineRef.current = null; }
     if (exitLineRef.current) { exitLineRef.current.setMap(null); exitLineRef.current = null; }
-    if (funnelLineRef.current) { funnelLineRef.current.setMap(null); funnelLineRef.current = null; }
+    funnelLinesRef.current.forEach((l) => l.setMap(null));
+    funnelLinesRef.current = [];
 
     const parts = getRouteParts(courseData.elements);
     const buoys = parts.buoys;
@@ -245,19 +246,51 @@ export function DesignerCanvas() {
       });
     }
 
-    // Finish funnel connecting line
-    if (parts.finishFunnelLeft && parts.finishFunnelRight) {
-      funnelLineRef.current = new google.maps.Polyline({
-        path: [
-          { lat: parts.finishFunnelLeft.lat, lng: parts.finishFunnelLeft.lng },
-          { lat: parts.finishFunnelRight.lat, lng: parts.finishFunnelRight.lng },
-        ],
+    // Finish funnel lanes: lines from each funnel post to the finish endpoint
+    if (parts.finishEndpoint && parts.finishFunnelLeft && parts.finishFunnelRight) {
+      const ep = { lat: parts.finishEndpoint.lat, lng: parts.finishEndpoint.lng };
+      const fl = { lat: parts.finishFunnelLeft.lat, lng: parts.finishFunnelLeft.lng };
+      const fr = { lat: parts.finishFunnelRight.lat, lng: parts.finishFunnelRight.lng };
+
+      // Connecting line between funnel posts (the wide opening)
+      funnelLinesRef.current.push(new google.maps.Polyline({
+        path: [fl, fr],
         geodesic: true,
         strokeColor: "#EF4444",
         strokeOpacity: 0.9,
         strokeWeight: 3,
         map,
-      });
+      }));
+
+      // Left lane: funnel_left → finish endpoint
+      funnelLinesRef.current.push(new google.maps.Polyline({
+        path: [fl, ep],
+        geodesic: true,
+        strokeColor: "#EF4444",
+        strokeOpacity: 0.7,
+        strokeWeight: 2,
+        icons: [{
+          icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 2 },
+          offset: "0",
+          repeat: "10px",
+        }],
+        map,
+      }));
+
+      // Right lane: funnel_right → finish endpoint
+      funnelLinesRef.current.push(new google.maps.Polyline({
+        path: [fr, ep],
+        geodesic: true,
+        strokeColor: "#EF4444",
+        strokeOpacity: 0.7,
+        strokeWeight: 2,
+        icons: [{
+          icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 2 },
+          offset: "0",
+          repeat: "10px",
+        }],
+        map,
+      }));
     }
   }, [map, courseData.elements, selectedElementId, setSelectedElementId, updateElementPosition]);
 
