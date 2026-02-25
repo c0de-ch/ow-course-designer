@@ -6,15 +6,11 @@ services:
     restart: unless-stopped
     ports:
       - "3010:3000"
+    env_file:
+      - /etc/ow-course-designer/.env
     environment:
       DATABASE_PROVIDER: sqlite
       DATABASE_URL: file:/app/data/prod.db
-      NEXTAUTH_URL: ${NEXTAUTH_URL}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
       PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium-browser
     volumes:
-      - ./data:/app/data
+      - /var/lib/ow-course-designer:/app/data

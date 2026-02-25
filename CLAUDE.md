@@ -110,7 +110,7 @@ prisma/schema.prisma
 - **MarkerOverlay**: Extends `google.maps.OverlayView`, renders SVG div positioned via `fromLatLngToDivPixel`, handles drag with mousedown/mousemove/mouseup.
 - **PDF/PNG export**: Puppeteer navigates to `/share/<token>?print=1`, waits for `#map-ready` element, then captures.
 - **Flyover video**: Recorded client-side via `MediaRecorder` + `canvas.captureStream()`. Uploaded to `data/flyovers/` on the server and attached to the share snapshot. The share page only links to the pre-generated video — no live preview or generation.
-- **Data directory**: `data/` stores the SQLite database and `data/flyovers/` stores uploaded flyover videos. Mounted as a Docker volume (`./data:/app/data`) so data persists across container restarts.
+- **Data directory (FHS 3.0)**: In production, persistent data lives at `/var/lib/ow-course-designer/` (SQLite DB + `flyovers/`), config at `/etc/ow-course-designer/.env`, and the compose file at `/srv/ow-course-designer/`. The data dir is mounted to `/app/data` in the container. In development, `data/` is a local directory.
 - **Database provider**: Hardcoded to `sqlite` in `prisma/schema.prisma`. Change to `postgresql` and update `DATABASE_URL` for production PostgreSQL.
 
 ## Google Maps — Always Use the New (Places v2) API
@@ -136,4 +136,4 @@ export DEPLOY_DIR=/srv/ow-course-designer
 bash deploy.sh
 ```
 
-Place `.env` (with production values) in `$DEPLOY_DIR` on the server before first deploy. See `README.md` for full setup instructions (dedicated user, Google OAuth/Maps config, Cloudflare).
+Place `.env` (with production secrets) at `/etc/ow-course-designer/.env` on the server before first deploy. See `README.md` for full setup instructions (dedicated user, FHS directory layout, Google OAuth/Maps config, Cloudflare).

@@ -52,9 +52,16 @@ adduser --system --group --home /srv/ow-course-designer --shell /bin/bash owcour
 # Add to docker group so it can manage containers
 usermod -aG docker owcourse
 
-# Create app and data directories
-mkdir -p /srv/ow-course-designer/data/flyovers
-chown -R owcourse:owcourse /srv/ow-course-designer
+# Create FHS-compliant directories
+mkdir -p /srv/ow-course-designer            # compose file + image artifacts
+mkdir -p /etc/ow-course-designer            # host-specific config (.env)
+mkdir -p /var/lib/ow-course-designer/flyovers  # persistent data (DB + videos)
+mkdir -p /var/log/ow-course-designer        # logs (future)
+
+chown -R owcourse:owcourse /srv/ow-course-designer \
+                           /etc/ow-course-designer \
+                           /var/lib/ow-course-designer \
+                           /var/log/ow-course-designer
 ```
 
 Set up SSH key access for deployments (from your local machine or GitHub Actions):
@@ -116,11 +123,8 @@ ssh-copy-id owcourse@ow-course-designer.c0de.ch
 ```bash
 # On the server as owcourse
 sudo -u owcourse bash
-cd /srv/ow-course-designer
 
-cat > .env <<'EOF'
-DATABASE_PROVIDER=sqlite
-DATABASE_URL=file:./data/prod.db
+cat > /etc/ow-course-designer/.env <<'EOF'
 NEXTAUTH_URL=https://ow-course-designer.c0de.ch
 NEXTAUTH_SECRET=<generate with: openssl rand -base64 32>
 GOOGLE_CLIENT_ID=<from step 3>
@@ -129,8 +133,10 @@ NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=<from step 2>
 NEXT_PUBLIC_APP_URL=https://ow-course-designer.c0de.ch
 EOF
 
-chmod 600 .env
+chmod 600 /etc/ow-course-designer/.env
 ```
+
+Non-secret build-time defaults (`DATABASE_PROVIDER`, `DATABASE_URL`, `PUPPETEER_EXECUTABLE_PATH`) are set inline in `docker-compose.prod.yml` — only secrets and host-specific values go in the env file.
 
 ---
 
@@ -176,14 +182,18 @@ Pushes to `main` trigger `.github/workflows/deploy.yml` which builds the Docker 
 | `DEPLOY_SSH_KEY` | SSH private key for the `owcourse` user |
 | `DEPLOY_SERVER` | `owcourse@ow-course-designer.c0de.ch` (used by `deploy.sh` for manual/CI deploys) |
 
-### Data Volumes
+### Data Volumes (FHS 3.0 Layout)
 
-The `./data` directory on the host is mounted to `/app/data` inside the container. It stores:
+The deployment follows the [FHS 3.0](https://refspecs.linuxfoundation.org/FHS_3.0/fhs/index.html) directory layout:
 
-- `prod.db` — SQLite database
-- `flyovers/` — Pre-recorded flyover videos attached to shared courses
-
-This directory is persisted via the Docker volume mount in `docker-compose.prod.yml`.
+| Path | Purpose |
+|------|---------|
+| `/srv/ow-course-designer/` | Compose file, Docker image artifacts |
+| `/etc/ow-course-designer/.env` | Host-specific configuration (secrets) |
+| `/var/lib/ow-course-designer/` | Persistent data — mounted to `/app/data` in the container |
+| `/var/lib/ow-course-designer/prod.db` | SQLite database |
+| `/var/lib/ow-course-designer/flyovers/` | Pre-recorded flyover videos |
+| `/var/log/ow-course-designer/` | Log files (future) |
 
 ## License
 

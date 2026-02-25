@@ -34,7 +34,8 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             cd /srv/ow-course-designer
-            mkdir -p data/flyovers
+            mkdir -p /var/lib/ow-course-designer/flyovers
+            mkdir -p /var/log/ow-course-designer
             gunzip -c image.tar.gz | docker load
             rm image.tar.gz
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
