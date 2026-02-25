@@ -7,6 +7,11 @@ const TYPE_LABELS: Record<ElementType, string> = {
   buoy: "Buoy",
   start: "Start",
   finish: "Finish",
+  finish_left: "Finish L",
+  finish_right: "Finish R",
+  finish_endpoint: "Finish",
+  finish_funnel_left: "Funnel L",
+  finish_funnel_right: "Funnel R",
   gate_left: "Gate L",
   gate_right: "Gate R",
   shore_entry: "Shore",
@@ -18,6 +23,11 @@ const TYPE_COLORS: Record<ElementType, string> = {
   buoy: "#FBBF24",
   start: "#22C55E",
   finish: "#111111",
+  finish_left: "#111111",
+  finish_right: "#111111",
+  finish_endpoint: "#111111",
+  finish_funnel_left: "#EF4444",
+  finish_funnel_right: "#EF4444",
   gate_left: "#6366F1",
   gate_right: "#6366F1",
   shore_entry: "#F97316",
@@ -25,7 +35,7 @@ const TYPE_COLORS: Record<ElementType, string> = {
   feeding_platform: "#7C3AED",
 };
 
-const LAPS_TYPES: ElementType[] = ["buoy", "gate_left", "gate_right", "finish"];
+const LAPS_TYPES: ElementType[] = ["buoy", "gate_left", "gate_right", "finish", "finish_left", "finish_right", "finish_endpoint", "finish_funnel_left", "finish_funnel_right"];
 
 export function RoutePanel() {
   const {

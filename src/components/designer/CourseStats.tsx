@@ -2,34 +2,44 @@
 
 import { useCourseStore } from "@/store/courseStore";
 
+const pill = "bg-white/80 backdrop-blur-sm text-gray-900 h-8 px-3 rounded-lg shadow-lg flex items-center text-sm font-semibold";
+
 export function CourseStats() {
   const { courseData, setLaps } = useCourseStore();
-  const { distanceKm, elements, laps } = courseData;
+  const { distanceKm, entryDistKm, exitDistKm, elements, laps } = courseData;
 
   const routeElements = elements.filter((el) => el.type !== "rescue_zone" && el.type !== "feeding_platform");
-  const totalDistance = distanceKm != null ? distanceKm * laps : null;
+  const entry = entryDistKm ?? 0;
+  const exit = exitDistKm ?? 0;
+  const loop = distanceKm ?? 0;
+  const totalDistance = entry + loop * laps + exit;
 
   return (
-    <div className="flex items-center gap-3 text-sm">
-      <div className="badge badge-outline">
+    <div className="flex items-center gap-2">
+      <div className={pill}>
         {routeElements.length} marker{routeElements.length !== 1 ? "s" : ""}
       </div>
-      {distanceKm != null && distanceKm > 0 && (
-        <div className="badge badge-primary">
-          {laps > 1
-            ? `${distanceKm.toFixed(2)} km × ${laps} = ${totalDistance!.toFixed(2)} km`
-            : `${distanceKm.toFixed(2)} km`}
+      {loop > 0 && (
+        <div className={pill}>
+          {laps > 1 || entry > 0 || exit > 0
+            ? `${totalDistance.toFixed(2)} km`
+            : `${loop.toFixed(2)} km`}
         </div>
       )}
-      <div className="flex items-center gap-1">
-        <label className="text-xs text-base-content/60">Laps:</label>
+      {loop > 0 && laps > 1 && (
+        <div className={`${pill} text-gray-600`}>
+          {loop.toFixed(2)} km/lap
+        </div>
+      )}
+      <div className={`${pill} gap-1.5`}>
+        <span className="text-gray-600 text-xs font-medium">Laps:</span>
         <input
           type="number"
           min={1}
           max={100}
           value={laps}
           onChange={(e) => setLaps(Math.max(1, parseInt(e.target.value) || 1))}
-          className="input input-xs w-14 text-center"
+          className="w-12 h-6 text-center text-sm bg-gray-100 text-gray-900 border border-gray-300 rounded outline-none"
         />
       </div>
     </div>

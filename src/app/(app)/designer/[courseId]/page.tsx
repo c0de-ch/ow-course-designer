@@ -64,17 +64,6 @@ export default function DesignerPage({ params }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDirty, courseData, autoSaveEnabled]);
 
-  // Warn on navigation away with unsaved changes
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isDirty) {
-        e.preventDefault();
-      }
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [isDirty]);
-
   async function saveCourse() {
     setSaving(true);
     setStatusMessage("Saving...");

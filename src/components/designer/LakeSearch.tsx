@@ -22,7 +22,6 @@ export function parseLakeLatLng(
 export function LakeSearch({ map }: LakeSearchProps) {
   const setCourseData = useCourseStore((s) => s.setCourseData);
   const setDirty = useCourseStore((s) => s.setDirty);
-  const lakeLatLng = useCourseStore((s) => s.courseData.lakeLatLng);
   const lakeLabel = useCourseStore((s) => s.courseData.lakeLabel);
 
   const [inputValue, setInputValue] = useState("");
@@ -31,11 +30,13 @@ export function LakeSearch({ map }: LakeSearchProps) {
   >([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [expanded, setExpanded] = useState(false);
 
   const placesReady = useRef(false);
   const sessionToken =
     useRef<google.maps.places.AutocompleteSessionToken | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Load the places library once
   useEffect(() => {
@@ -53,15 +54,6 @@ export function LakeSearch({ map }: LakeSearchProps) {
   useEffect(() => {
     if (lakeLabel) setInputValue(lakeLabel);
   }, [lakeLabel]);
-
-  function handleCenterOnLake() {
-    const ll = useCourseStore.getState().courseData.lakeLatLng;
-    if (!ll || !map) return;
-    const coords = parseLakeLatLng(ll);
-    if (!coords) return;
-    map.setCenter(coords);
-    map.setZoom(14);
-  }
 
   const fetchSuggestions = useCallback(
     (input: string) => {
@@ -100,6 +92,7 @@ export function LakeSearch({ map }: LakeSearchProps) {
   const selectSuggestion = useCallback(
     async (suggestion: google.maps.places.AutocompleteSuggestion) => {
       setShowDropdown(false);
+      setExpanded(false);
       if (!suggestion.placePrediction || !map) return;
 
       try {
@@ -140,7 +133,6 @@ export function LakeSearch({ map }: LakeSearchProps) {
       const idx = highlightedIndex >= 0 ? highlightedIndex : 0;
       await selectSuggestion(suggestions[idx]);
     } else if (inputValue.trim() && placesReady.current) {
-      // No visible suggestions — do a one-shot fetch and select the first
       try {
         const { suggestions: results } =
           await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions(
@@ -170,6 +162,8 @@ export function LakeSearch({ map }: LakeSearchProps) {
       doSearch();
     } else if (e.key === "Escape") {
       setShowDropdown(false);
+      setExpanded(false);
+      inputRef.current?.blur();
     }
   }
 
@@ -181,64 +175,76 @@ export function LakeSearch({ map }: LakeSearchProps) {
 
   function handleBlur() {
     // Delay so onMouseDown on dropdown items fires first
-    setTimeout(() => setShowDropdown(false), 200);
+    setTimeout(() => {
+      setShowDropdown(false);
+      setExpanded(false);
+    }, 200);
+  }
+
+  function handleExpand() {
+    setExpanded(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }
+
+  // Collapsed state: show search icon button
+  if (!expanded) {
+    return (
+      <button
+        onClick={handleExpand}
+        className="bg-white/80 backdrop-blur-sm rounded-lg shadow-lg h-8 w-8 flex items-center justify-center text-gray-700 hover:bg-white transition-colors"
+        title="Search for a lake or region"
+      >
+        🔍
+      </button>
+    );
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="relative">
-        <div className="flex">
-          <input
-            type="text"
-            value={inputValue}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            onBlur={handleBlur}
-            placeholder="Search for a lake or region..."
-            className="input input-sm w-72 border border-gray-300 rounded-r-none focus:outline-none focus:ring-1 focus:ring-blue-400"
-          />
-          <button
-            onClick={doSearch}
-            disabled={!inputValue.trim() || !map}
-            title="Search"
-            className="btn btn-sm btn-ghost bg-white/80 hover:bg-white border border-l-0 border-gray-300 rounded-l-none disabled:opacity-40"
-          >
-            🔍
-          </button>
-        </div>
-        {showDropdown && suggestions.length > 0 && (
-          <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded shadow-lg max-h-60 overflow-y-auto">
-            {suggestions.map((s, i) => (
-              <li
-                key={s.placePrediction?.placeId ?? i}
-                onMouseDown={() => selectSuggestion(s)}
-                className={`px-3 py-2 cursor-pointer text-sm ${
-                  i === highlightedIndex
-                    ? "bg-blue-100"
-                    : "hover:bg-gray-100"
-                }`}
-              >
-                <span className="font-medium">
-                  {s.placePrediction?.mainText?.text ?? ""}
-                </span>
-                {s.placePrediction?.secondaryText?.text && (
-                  <span className="text-gray-500 ml-1">
-                    {s.placePrediction.secondaryText.text}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+    <div className="relative">
+      <div className="flex bg-white/80 backdrop-blur-sm rounded-lg shadow-lg overflow-hidden">
+        <input
+          ref={inputRef}
+          type="text"
+          value={inputValue}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          onBlur={handleBlur}
+          placeholder="Search for a lake or region..."
+          className="h-8 px-3 w-64 bg-transparent text-sm text-gray-900 placeholder-gray-500 outline-none"
+        />
+        <button
+          onClick={doSearch}
+          disabled={!inputValue.trim() || !map}
+          title="Search"
+          className="h-8 w-8 flex items-center justify-center text-gray-700 hover:bg-white/60 disabled:opacity-40 transition-colors"
+        >
+          🔍
+        </button>
       </div>
-      <button
-        onClick={handleCenterOnLake}
-        disabled={!lakeLatLng || !map}
-        title="Center map on lake"
-        className="btn btn-sm btn-ghost bg-white/80 hover:bg-white disabled:opacity-40"
-      >
-        🎯
-      </button>
+      {showDropdown && suggestions.length > 0 && (
+        <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {suggestions.map((s, i) => (
+            <li
+              key={s.placePrediction?.placeId ?? i}
+              onMouseDown={() => selectSuggestion(s)}
+              className={`px-3 py-2 cursor-pointer text-sm ${
+                i === highlightedIndex
+                  ? "bg-blue-100"
+                  : "hover:bg-gray-100"
+              }`}
+            >
+              <span className="font-medium text-gray-900">
+                {s.placePrediction?.mainText?.text ?? ""}
+              </span>
+              {s.placePrediction?.secondaryText?.text && (
+                <span className="text-gray-600 ml-1">
+                  {s.placePrediction.secondaryText.text}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

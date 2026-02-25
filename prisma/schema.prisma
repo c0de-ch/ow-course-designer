@@ -103,11 +103,12 @@ model CourseElement {
 }
 
 model CourseSnapshot {
-  id        String   @id @default(cuid())
-  courseId  String
-  token     String   @unique @default(cuid())
-  payload   String
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  courseId   String
+  token      String   @unique @default(cuid())
+  payload    String
+  flyoverUrl String?
+  createdAt  DateTime @default(now())
 
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 }

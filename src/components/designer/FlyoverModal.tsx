@@ -1,26 +1,34 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useCourseStore } from "@/store/courseStore";
+import { useCourseStore, getRouteParts, getFinishMidpoint, getBuoySide, CourseData } from "@/store/courseStore";
+import { haversineDistanceKm } from "@/lib/haversine";
 import { getMarkerSvg } from "./markers/markerIcons";
 import { buildCameraPath, type CameraFrame } from "@/lib/flyover/cameraPath";
+import { computeBearing, arcAroundBuoy } from "@/lib/haversine";
 
-const SWIMMER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <circle cx="16" cy="4" r="2" fill="#3B82F6" stroke="#3B82F6"/>
-  <path d="M2 20c1.5-1 3.5-1 5 0s3.5 1 5 0 3.5-1 5 0 3.5 1 5 0" stroke="#3B82F6" stroke-width="2.5"/>
-  <path d="M6 16l2-2 4.5-1.5L15 10" stroke="#3B82F6" stroke-width="2"/>
-  <path d="M11.5 12.5L9 15" stroke="#3B82F6" stroke-width="2"/>
+const SWIMMER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 32 32" fill="white" stroke="#3B82F6" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="6" cy="15" r="2.2" fill="white" stroke="#3B82F6"/>
+  <path d="M9 14.5c2-1 4-3.5 6-5l2.5 2.5c-2 2-4 3.5-6 4.5" fill="white" stroke="#3B82F6" stroke-width="1.2"/>
+  <path d="M9 14.5l-1.5 3c-.5 1-.2 1.5.5 1.5h3" fill="white" stroke="#3B82F6" stroke-width="1.2"/>
+  <path d="M15 11.5l4-1.5 4.5-.5" fill="none" stroke="#3B82F6" stroke-width="1.5"/>
+  <path d="M11 19l3.5.5 4-1" fill="none" stroke="#3B82F6" stroke-width="1.2"/>
+  <path d="M18.5 18.5l3.5 2 4 1" fill="none" stroke="#3B82F6" stroke-width="1.5"/>
+  <path d="M11.5 16l-2 4.5-3 3" fill="none" stroke="#3B82F6" stroke-width="1.2"/>
+  <path d="M12 17.5l-1 4 1 3.5" fill="none" stroke="#3B82F6" stroke-width="1.2"/>
 </svg>`;
 
 interface FlyoverModalProps {
   onClose: () => void;
+  courseDataProp?: CourseData;
+  onVideoReady?: (blob: Blob) => void;
 }
 
-export function FlyoverModal({ onClose }: FlyoverModalProps) {
+export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverModalProps) {
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [duration, setDuration] = useState(20);
+  const [duration, setDuration] = useState(-1);
   const [status, setStatus] = useState<"idle" | "previewing" | "recording" | "done">("idle");
   const [progress, setProgress] = useState(0);
   const [statusMsg, setStatusMsg] = useState("Initializing map...");
@@ -32,8 +40,52 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
   const swimmerDivRef = useRef<HTMLDivElement | null>(null);
   const swimmerPosRef = useRef<google.maps.LatLng | null>(null);
 
-  const { courseData } = useCourseStore();
+  const storeCourseData = useCourseStore((s) => s.courseData);
+  const courseData = courseDataProp ?? storeCourseData;
   const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || undefined;
+
+  // Compute total route distance to derive sensible durations
+  const routeDistKm = (() => {
+    const parts = getRouteParts(courseData.elements);
+    const buoys = parts.buoys;
+    if (buoys.length < 2) return 0;
+    let dist = 0;
+    // Entry
+    if (parts.start && buoys.length > 0) {
+      dist += haversineDistanceKm(parts.start, buoys[0]);
+    }
+    // Buoy loop × laps
+    let loop = 0;
+    for (let i = 0; i < buoys.length; i++) {
+      loop += haversineDistanceKm(buoys[i], buoys[(i + 1) % buoys.length]);
+    }
+    dist += loop * (courseData.laps ?? 1);
+    // Exit
+    const finMid = getFinishMidpoint(parts);
+    if (finMid && buoys.length > 0) {
+      dist += haversineDistanceKm(buoys[0], finMid);
+    }
+    return dist;
+  })();
+
+  // Duration options scaled to route distance
+  // Short ≈ 3s/100m, Medium ≈ 6s/100m, Long ≈ 10s/100m
+  const durationOptions = (() => {
+    const distM = routeDistKm * 1000;
+    const round5 = (v: number) => Math.round(v / 5) * 5;
+    return {
+      short:  Math.max(10, Math.min(60, round5(distM * 0.03))),
+      medium: Math.max(20, Math.min(120, round5(distM * 0.06))),
+      long:   Math.max(30, Math.min(180, round5(distM * 0.10))),
+    };
+  })();
+
+  // Set initial duration to medium
+  useEffect(() => {
+    if (duration === -1 && durationOptions.medium > 0) {
+      setDuration(durationOptions.medium);
+    }
+  }, [duration, durationOptions.medium]);
 
   // Initialize map — google.maps is already loaded by DesignerCanvas
   useEffect(() => {
@@ -96,16 +148,82 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
     map.addListener("idle", () => {
       setMapReady(true);
 
-      // Draw route polyline
-      if (routeElements.length >= 2) {
-        const path = routeElements.map((el) => ({ lat: el.lat, lng: el.lng }));
-        path.push(path[0]);
+      // Draw route polylines (solid buoy loop + dashed entry/exit)
+      const parts = getRouteParts(courseData.elements);
+      const buoys = parts.buoys;
+
+      if (buoys.length >= 2) {
+        const closedBuoys = [...buoys, buoys[0]];
+        const offsetPath = closedBuoys.flatMap((b, i) => {
+          const pt = { lat: b.lat, lng: b.lng };
+          const side = getBuoySide(b.metadata);
+          if (side === "directional") return [pt];
+          const prev = closedBuoys[(i - 1 + closedBuoys.length) % closedBuoys.length];
+          const next = closedBuoys[(i + 1) % closedBuoys.length];
+          const bearing = computeBearing(prev, next);
+          return arcAroundBuoy(pt, bearing, side);
+        });
+
         new google.maps.Polyline({
-          path,
+          path: offsetPath,
           geodesic: true,
           strokeColor: "#3B82F6",
           strokeOpacity: 0.8,
           strokeWeight: 4,
+          map,
+        });
+      }
+
+      if (parts.start && buoys.length > 0) {
+        new google.maps.Polyline({
+          path: [
+            { lat: parts.start.lat, lng: parts.start.lng },
+            { lat: buoys[0].lat, lng: buoys[0].lng },
+          ],
+          geodesic: true,
+          strokeColor: "#3B82F6",
+          strokeOpacity: 0.6,
+          strokeWeight: 3,
+          icons: [{
+            icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 },
+            offset: "0",
+            repeat: "15px",
+          }],
+          map,
+        });
+      }
+
+      const finishMid = getFinishMidpoint(parts);
+      if (finishMid && buoys.length > 0) {
+        new google.maps.Polyline({
+          path: [
+            { lat: buoys[0].lat, lng: buoys[0].lng },
+            { lat: finishMid.lat, lng: finishMid.lng },
+          ],
+          geodesic: true,
+          strokeColor: "#3B82F6",
+          strokeOpacity: 0.6,
+          strokeWeight: 3,
+          icons: [{
+            icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 },
+            offset: "0",
+            repeat: "15px",
+          }],
+          map,
+        });
+      }
+
+      // Finish funnel connecting line
+      if (parts.finishFunnelLeft && parts.finishFunnelRight) {
+        new google.maps.Polyline({
+          path: [
+            { lat: parts.finishFunnelLeft.lat, lng: parts.finishFunnelLeft.lng },
+            { lat: parts.finishFunnelRight.lat, lng: parts.finishFunnelRight.lng },
+          ],
+          geodesic: true,
+          strokeColor: "#EF4444",
+          strokeOpacity: 0.9,
+          strokeWeight: 3,
           map,
         });
       }
@@ -164,18 +282,15 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
       swimmerOverlay.setMap(map);
       swimmerOverlayRef.current = swimmerOverlay;
 
-      // Build camera path (with laps)
-      const routePts = routeElements.map((el) => ({
-        lat: el.lat,
-        lng: el.lng,
-      }));
+      // Build camera path (with laps) — only if duration is set
       const laps = courseData.laps ?? 1;
-      framesRef.current = buildCameraPath(routePts, duration, 30, laps);
+      const effectiveDuration = duration > 0 ? duration : durationOptions.medium;
+      framesRef.current = buildCameraPath(courseData.elements, effectiveDuration, 30, laps);
 
       if (framesRef.current.length === 0) {
         setStatusMsg("Need at least 2 route points for flyover");
       } else {
-        setStatusMsg(`Ready — ${duration}s, ${laps} lap${laps > 1 ? "s" : ""}`);
+        setStatusMsg(`Ready — ${effectiveDuration}s, ${laps} lap${laps > 1 ? "s" : ""}`);
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,13 +298,9 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
 
   // Rebuild frames when duration changes
   useEffect(() => {
-    if (!mapReady) return;
-    const routeEls = courseData.elements
-      .filter((el) => el.type !== "rescue_zone" && el.type !== "feeding_platform")
-      .sort((a, b) => a.order - b.order);
-    const routePts = routeEls.map((el) => ({ lat: el.lat, lng: el.lng }));
+    if (!mapReady || duration <= 0) return;
     const laps = courseData.laps ?? 1;
-    framesRef.current = buildCameraPath(routePts, duration, 30, laps);
+    framesRef.current = buildCameraPath(courseData.elements, duration, 30, laps);
     if (framesRef.current.length > 0) {
       setStatusMsg(`Ready — ${duration}s, ${laps} lap${laps > 1 ? "s" : ""}`);
     }
@@ -351,6 +462,7 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
       setVideoUrl(url);
       setStatus("done");
       setStatusMsg("Recording complete!");
+      onVideoReady?.(finalBlob);
     } catch (err) {
       setError((err as Error).message);
       setStatus("idle");
@@ -375,8 +487,8 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
   const busy = status === "previewing" || status === "recording";
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-base-100 rounded-lg shadow-2xl flex flex-col w-full max-w-4xl max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+      <div className="bg-base-100 rounded-xl shadow-2xl border-2 border-primary/30 flex flex-col w-full max-w-4xl max-h-[90vh] overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-base-300">
           <h2 className="text-lg font-bold">Flyover</h2>
@@ -414,9 +526,9 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
             </div>
           )}
 
-          {/* Branding overlay (top-left) */}
-          {(courseData.raceLabel || courseData.raceLogo) && (
-            <div className="absolute top-3 left-3 z-10 bg-white/80 backdrop-blur-sm rounded-lg p-2 max-w-[200px] pointer-events-none">
+          {/* Branding overlay (top-right) — hidden during preview/recording */}
+          {!busy && (courseData.raceLabel || courseData.raceLogo) && (
+            <div className="absolute top-3 right-3 z-10 bg-white/80 backdrop-blur-sm rounded-lg p-2 max-w-[200px] pointer-events-none">
               {courseData.raceLogo && (
                 <img src={courseData.raceLogo} alt="Race logo" className="max-h-12 max-w-full object-contain mb-1" />
               )}
@@ -426,17 +538,24 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
             </div>
           )}
 
-          {/* Distance + laps overlay (bottom-right) */}
-          {courseData.distanceKm != null && courseData.distanceKm > 0 && (
-            <div className="absolute bottom-3 right-3 z-10 bg-black/70 text-white px-4 py-2 rounded-lg text-right pointer-events-none">
-              {(courseData.laps ?? 1) > 1 ? (
-                <>
-                  <div className="text-lg font-bold">{(courseData.distanceKm * (courseData.laps ?? 1)).toFixed(2)} km</div>
-                  <div className="text-xs opacity-80">{courseData.distanceKm.toFixed(2)} km × {courseData.laps} laps</div>
-                </>
-              ) : (
-                <div className="text-lg font-bold">{courseData.distanceKm.toFixed(2)} km</div>
-              )}
+          {/* Distance + laps overlay — hidden during preview/recording */}
+          {!busy && courseData.distanceKm != null && courseData.distanceKm > 0 && (
+            <div className="absolute bottom-3 right-28 z-10 bg-white/80 backdrop-blur-sm text-gray-900 px-5 py-3 rounded-lg text-right pointer-events-none shadow-lg">
+              {(() => {
+                const loop = courseData.distanceKm!;
+                const entry = courseData.entryDistKm ?? 0;
+                const exit = courseData.exitDistKm ?? 0;
+                const laps = courseData.laps ?? 1;
+                const total = entry + loop * laps + exit;
+                return laps > 1 || entry > 0 || exit > 0 ? (
+                  <>
+                    <div className="text-2xl font-bold">{total.toFixed(2)} km</div>
+                    <div className="text-sm text-gray-600">{loop.toFixed(2)} km × {laps} lap{laps > 1 ? "s" : ""}</div>
+                  </>
+                ) : (
+                  <div className="text-2xl font-bold">{loop.toFixed(2)} km</div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -451,9 +570,9 @@ export function FlyoverModal({ onClose }: FlyoverModalProps) {
               onChange={(e) => setDuration(Number(e.target.value))}
               disabled={busy}
             >
-              <option value={10}>10s</option>
-              <option value={20}>20s</option>
-              <option value={30}>30s</option>
+              <option value={durationOptions.short}>Short ({durationOptions.short}s)</option>
+              <option value={durationOptions.medium}>Medium ({durationOptions.medium}s)</option>
+              <option value={durationOptions.long}>Long ({durationOptions.long}s)</option>
             </select>
           </div>
 

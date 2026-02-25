@@ -13,7 +13,7 @@ const TOOLS: Tool[] = [
   { id: "select", label: "Select", icon: "↖", description: "Select and drag markers" },
   { id: "buoy", label: "Buoy", icon: "🟡", description: "Place a turn buoy" },
   { id: "start", label: "Start", icon: "🟢", description: "Place start position" },
-  { id: "finish", label: "Finish", icon: "🔴", description: "Place finish position" },
+  { id: "finish", label: "Finish", icon: "🏁", description: "Place finish gate (1 click)" },
   { id: "gate", label: "Gate", icon: "⬛", description: "Place a gate (2 clicks)" },
   { id: "shore_entry", label: "Shore Entry", icon: "🏖", description: "Mark shore entry point" },
   { id: "rescue_zone", label: "Rescue Zone", icon: "⛑", description: "Draw rescue zone polygon" },

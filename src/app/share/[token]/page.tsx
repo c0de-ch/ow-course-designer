@@ -24,6 +24,8 @@ export default async function SharePage({ params, searchParams }: Props) {
     <ShareView
       courseData={courseData}
       isPrint={print === "1"}
+      token={token}
+      flyoverUrl={snapshot.flyoverUrl}
     />
   );
 }

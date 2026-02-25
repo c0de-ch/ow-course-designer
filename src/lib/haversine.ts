@@ -42,6 +42,43 @@ export function computeBearing(from: LatLng, to: LatLng): number {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
+export function offsetPointAlongBearing(
+  point: LatLng,
+  bearingDeg: number,
+  distanceMeters: number
+): LatLng {
+  const R_METERS = 6371000;
+  const d = distanceMeters / R_METERS;
+  const brng = toRad(bearingDeg);
+  const lat1 = toRad(point.lat);
+  const lng1 = toRad(point.lng);
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brng)
+  );
+  const lng2 =
+    lng1 +
+    Math.atan2(
+      Math.sin(brng) * Math.sin(d) * Math.cos(lat1),
+      Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+    );
+  return { lat: (lat2 * 180) / Math.PI, lng: (lng2 * 180) / Math.PI };
+}
+
+/** Generate 3-point arc around a sided buoy */
+export function arcAroundBuoy(
+  pt: LatLng,
+  bearing: number,
+  side: "left" | "right"
+): LatLng[] {
+  const approach = offsetPointAlongBearing(pt, (bearing + 180) % 360, 15);
+  const departure = offsetPointAlongBearing(pt, bearing, 15);
+  return [
+    offsetPointPerpendicular(approach, bearing, 12, side),
+    offsetPointPerpendicular(pt, bearing, 15, side),
+    offsetPointPerpendicular(departure, bearing, 12, side),
+  ];
+}
+
 export function offsetPointPerpendicular(
   point: LatLng,
   bearingDeg: number,

@@ -32,7 +32,7 @@ export function createMarkerOverlay(
       if (this.el.label) {
         const label = document.createElement("div");
         label.style.cssText =
-          "position:absolute;top:100%;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:11px;background:rgba(255,255,255,0.85);padding:1px 4px;border-radius:3px;pointer-events:none;margin-top:2px;";
+          "position:absolute;top:100%;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:13px;background:rgba(255,255,255,0.85);color:#111827;padding:2px 8px;border-radius:4px;font-weight:700;pointer-events:none;margin-top:2px;backdrop-filter:blur(4px);";
         label.textContent = this.el.label;
         div.appendChild(label);
       }
@@ -40,7 +40,7 @@ export function createMarkerOverlay(
       if (routeIndex !== null) {
         const badge = document.createElement("div");
         badge.style.cssText =
-          "position:absolute;top:0;right:0;transform:translate(40%,-40%);width:14px;height:14px;border-radius:50%;background:#1e3a5f;color:white;font-size:8px;font-weight:bold;display:flex;align-items:center;justify-content:center;pointer-events:none;line-height:1;";
+          "position:absolute;top:0;right:0;transform:translate(40%,-40%);width:18px;height:18px;border-radius:50%;background:#1e3a5f;color:white;font-size:10px;font-weight:bold;display:flex;align-items:center;justify-content:center;pointer-events:none;line-height:1;border:1.5px solid white;";
         badge.textContent = String(routeIndex);
         div.appendChild(badge);
       }

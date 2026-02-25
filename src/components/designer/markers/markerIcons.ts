@@ -1,4 +1,4 @@
-import { ElementType, BuoySide, getBuoySide } from "@/store/courseStore";
+import { ElementType, ActiveTool, BuoySide, getBuoySide } from "@/store/courseStore";
 
 function buoySvg(selected: boolean, side: BuoySide): string {
   const color = side === "left" ? "#EF4444" : side === "right" ? "#22C55E" : "#FBBF24";
@@ -42,6 +42,36 @@ function finishSvg(selected: boolean): string {
     <rect x="3" y="3" width="22" height="22" rx="2" fill="#111111"/>
     <rect x="3" y="3" width="11" height="11" fill="#EF4444"/>
     <rect x="14" y="14" width="11" height="11" fill="#EF4444"/>
+  </svg>`;
+}
+
+function finishLeftSvg(selected: boolean): string {
+  const ring = selected
+    ? '<circle cx="9" cy="5" r="8" fill="none" stroke="white" stroke-width="2"/>'
+    : "";
+  return `<svg width="18" height="36" viewBox="0 0 18 36" xmlns="http://www.w3.org/2000/svg">
+    ${ring}
+    <rect x="7" y="9" width="4" height="25" fill="#111" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>
+    <circle cx="9" cy="5" r="6" fill="#111" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>
+    <rect x="4" y="0" width="5" height="5" fill="#EF4444"/>
+    <rect x="9" y="0" width="5" height="5" fill="white"/>
+    <rect x="4" y="5" width="5" height="5" fill="white"/>
+    <rect x="9" y="5" width="5" height="5" fill="#EF4444"/>
+  </svg>`;
+}
+
+function finishRightSvg(selected: boolean): string {
+  const ring = selected
+    ? '<circle cx="9" cy="5" r="8" fill="none" stroke="white" stroke-width="2"/>'
+    : "";
+  return `<svg width="18" height="36" viewBox="0 0 18 36" xmlns="http://www.w3.org/2000/svg">
+    ${ring}
+    <rect x="7" y="9" width="4" height="25" fill="#111" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>
+    <circle cx="9" cy="5" r="6" fill="#111" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>
+    <rect x="4" y="0" width="5" height="5" fill="white"/>
+    <rect x="9" y="0" width="5" height="5" fill="#EF4444"/>
+    <rect x="4" y="5" width="5" height="5" fill="#EF4444"/>
+    <rect x="9" y="5" width="5" height="5" fill="white"/>
   </svg>`;
 }
 
@@ -95,6 +125,59 @@ function rescueZoneSvg(selected: boolean): string {
   </svg>`;
 }
 
+function finishEndpointSvg(selected: boolean): string {
+  const ring = selected
+    ? '<circle cx="14" cy="14" r="13" fill="none" stroke="white" stroke-width="2.5"/>'
+    : "";
+  // Checkered flag circle
+  return `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+    ${ring}
+    <circle cx="14" cy="14" r="11" fill="#111111" stroke="rgba(0,0,0,0.35)" stroke-width="1.5"/>
+    <rect x="6" y="6" width="4" height="4" fill="#EF4444"/>
+    <rect x="10" y="6" width="4" height="4" fill="white"/>
+    <rect x="14" y="6" width="4" height="4" fill="#EF4444"/>
+    <rect x="18" y="6" width="4" height="4" fill="white"/>
+    <rect x="6" y="10" width="4" height="4" fill="white"/>
+    <rect x="10" y="10" width="4" height="4" fill="#EF4444"/>
+    <rect x="14" y="10" width="4" height="4" fill="white"/>
+    <rect x="18" y="10" width="4" height="4" fill="#EF4444"/>
+    <rect x="6" y="14" width="4" height="4" fill="#EF4444"/>
+    <rect x="10" y="14" width="4" height="4" fill="white"/>
+    <rect x="14" y="14" width="4" height="4" fill="#EF4444"/>
+    <rect x="18" y="14" width="4" height="4" fill="white"/>
+    <rect x="6" y="18" width="4" height="4" fill="white"/>
+    <rect x="10" y="18" width="4" height="4" fill="#EF4444"/>
+    <rect x="14" y="18" width="4" height="4" fill="white"/>
+    <rect x="18" y="18" width="4" height="4" fill="#EF4444"/>
+  </svg>`;
+}
+
+function finishFunnelLeftSvg(selected: boolean): string {
+  const ring = selected
+    ? '<circle cx="9" cy="5" r="8" fill="none" stroke="white" stroke-width="2"/>'
+    : "";
+  // Post with right-arrow (swim right through funnel)
+  return `<svg width="18" height="36" viewBox="0 0 18 36" xmlns="http://www.w3.org/2000/svg">
+    ${ring}
+    <rect x="7" y="9" width="4" height="25" fill="#111" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>
+    <circle cx="9" cy="5" r="6" fill="#EF4444" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>
+    <path d="M6,5 L13,5 M10,2 L13,5 L10,8" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </svg>`;
+}
+
+function finishFunnelRightSvg(selected: boolean): string {
+  const ring = selected
+    ? '<circle cx="9" cy="5" r="8" fill="none" stroke="white" stroke-width="2"/>'
+    : "";
+  // Post with left-arrow (swim left through funnel)
+  return `<svg width="18" height="36" viewBox="0 0 18 36" xmlns="http://www.w3.org/2000/svg">
+    ${ring}
+    <rect x="7" y="9" width="4" height="25" fill="#111" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>
+    <circle cx="9" cy="5" r="6" fill="#EF4444" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>
+    <path d="M12,5 L5,5 M8,2 L5,5 L8,8" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </svg>`;
+}
+
 function feedingPlatformSvg(selected: boolean): string {
   const ring = selected
     ? '<rect x="1" y="1" width="26" height="26" fill="none" stroke="white" stroke-width="2.5" rx="4"/>'
@@ -115,13 +198,42 @@ function feedingPlatformSvg(selected: boolean): string {
 
 export function getMarkerSvg(type: ElementType, selected: boolean, metadata?: string | null): string {
   switch (type) {
-    case "buoy":             return buoySvg(selected, getBuoySide(metadata));
-    case "start":            return startSvg(selected);
-    case "finish":           return finishSvg(selected);
-    case "gate_left":        return gateLeftSvg(selected);
-    case "gate_right":       return gateRightSvg(selected);
-    case "shore_entry":      return shoreEntrySvg(selected);
-    case "rescue_zone":      return rescueZoneSvg(selected);
-    case "feeding_platform": return feedingPlatformSvg(selected);
+    case "buoy":                return buoySvg(selected, getBuoySide(metadata));
+    case "start":               return startSvg(selected);
+    case "finish":              return finishSvg(selected);
+    case "finish_left":         return finishLeftSvg(selected);
+    case "finish_right":        return finishRightSvg(selected);
+    case "finish_endpoint":     return finishEndpointSvg(selected);
+    case "finish_funnel_left":  return finishFunnelLeftSvg(selected);
+    case "finish_funnel_right": return finishFunnelRightSvg(selected);
+    case "gate_left":           return gateLeftSvg(selected);
+    case "gate_right":          return gateRightSvg(selected);
+    case "shore_entry":         return shoreEntrySvg(selected);
+    case "rescue_zone":         return rescueZoneSvg(selected);
+    case "feeding_platform":    return feedingPlatformSvg(selected);
+  }
+}
+
+/** SVG cursor icon for each tool (28x28). Returns null for "select". */
+export function getToolCursorSvg(tool: ActiveTool): string | null {
+  switch (tool) {
+    case "select":
+      return null;
+    case "buoy":
+      return buoySvg(false, "directional");
+    case "start":
+      return startSvg(false);
+    case "finish":
+      return finishEndpointSvg(false);
+    case "gate":
+      return gateLeftSvg(false);
+    case "shore_entry":
+      return shoreEntrySvg(false);
+    case "rescue_zone":
+      return rescueZoneSvg(false);
+    case "feeding_platform":
+      return feedingPlatformSvg(false);
+    default:
+      return null;
   }
 }

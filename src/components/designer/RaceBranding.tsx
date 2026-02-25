@@ -38,7 +38,7 @@ export function RaceBranding({ readOnly = false, raceLabel: propLabel, raceLogo:
   }
 
   return (
-    <div className="absolute top-3 left-3 z-10">
+    <div className="absolute top-3 right-3 z-10">
       <div
         className="bg-white/80 backdrop-blur-sm rounded-lg p-2 max-w-[200px] cursor-pointer"
         onClick={() => !readOnly && setEditing(!editing)}
