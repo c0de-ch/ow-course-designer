@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ow-course-designer
+  namespace: ow-course-designer
+  labels:
+    app.kubernetes.io/name: ow-course-designer
+  annotations:
+    # nginx-ingress
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    # cert-manager — uncomment if using Let's Encrypt
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - ow-course-designer.example.com
+      secretName: ow-course-designer-tls
+  rules:
+    - host: ow-course-designer.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ow-course-designer
+                port:
+                  name: http
+# ---
+# Alternative: Cloudflare Tunnel (no ingress controller needed)
+#
+# Install cloudflared on your cluster, then create a Tunnel that
+# points to http://ow-course-designer.ow-course-designer.svc:80
+# See: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
