@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ow-course-designer-data
+  namespace: ow-course-designer
+  labels:
+    app.kubernetes.io/name: ow-course-designer
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

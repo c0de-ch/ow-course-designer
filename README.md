@@ -39,7 +39,9 @@ npx prisma studio                 # DB GUI at localhost:5555
 
 Production URL: **https://ow-course-designer.c0de.ch**
 
-The app runs as a Docker container on port **3010** behind Cloudflare proxy (HTTPS).
+The app runs as a Docker container on port **3010** behind Cloudflare proxy (HTTPS). Kubernetes manifests are available in `k8s/`.
+
+For the full deployment guide — including Google Cloud setup, Cloudflare configuration, Kubernetes, backups, and troubleshooting — see **[docs/deployment-guide.md](docs/deployment-guide.md)**.
 
 ---
 

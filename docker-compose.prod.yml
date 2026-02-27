@@ -3,14 +3,36 @@ version: "3.9"
 services:
   app:
     image: ow-course-designer:latest
+    container_name: ow-course-designer
     restart: unless-stopped
     ports:
       - "3010:3000"
     env_file:
       - /etc/ow-course-designer/.env
     environment:
+      NODE_ENV: production
       DATABASE_PROVIDER: sqlite
       DATABASE_URL: file:/app/data/prod.db
       PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium-browser
+    shm_size: "256m"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1"
+        reservations:
+          memory: 512m
+          cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     volumes:
       - /var/lib/ow-course-designer:/app/data

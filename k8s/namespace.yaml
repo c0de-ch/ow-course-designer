@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ow-course-designer
+  labels:
+    app.kubernetes.io/name: ow-course-designer
+    app.kubernetes.io/part-of: ow-course-designer

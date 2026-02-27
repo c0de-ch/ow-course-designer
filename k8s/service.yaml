@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ow-course-designer
+  namespace: ow-course-designer
+  labels:
+    app.kubernetes.io/name: ow-course-designer
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: ow-course-designer

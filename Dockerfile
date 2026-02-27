@@ -29,6 +29,9 @@ RUN yarn build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
+LABEL org.opencontainers.image.source="https://github.com/kim/ow-course-designer"
+LABEL org.opencontainers.image.description="Open-water swim course designer"
+
 # Install Chromium for Puppeteer
 RUN apk add --no-cache \
     chromium \
@@ -53,6 +56,9 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget --spider -q http://localhost:3000/api/health || exit 1
 
 # Create data directory for flyover videos (mount as volume in production)
 RUN mkdir -p /app/data/flyovers
