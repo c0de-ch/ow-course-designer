@@ -11,6 +11,7 @@ interface ExportPanelProps {
 export function ExportPanel({ courseId }: ExportPanelProps) {
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareShortUrl, setShareShortUrl] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareStep, setShareStep] = useState<string | null>(null);
   const [copying, setCopying] = useState(false);
@@ -22,6 +23,7 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
   async function handleShare() {
     setShowShareModal(true);
     setShareUrl(null);
+    setShareShortUrl(null);
     setShareError(null);
     setShareStep("Creating share link...");
 
@@ -63,6 +65,7 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
 
       const data = await res.json();
       setShareUrl(data.url);
+      setShareShortUrl(data.shortUrl ?? null);
       setShareStep(null);
     } catch (err) {
       setShareError((err as Error).message || "Something went wrong");
@@ -71,12 +74,13 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
   }
 
   async function copyShareUrl() {
-    if (!shareUrl) return;
+    const urlToCopy = shareShortUrl || shareUrl;
+    if (!urlToCopy) return;
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      await navigator.clipboard.writeText(urlToCopy);
     } catch {
       const textarea = document.createElement("textarea");
-      textarea.value = shareUrl;
+      textarea.value = urlToCopy;
       textarea.style.position = "fixed";
       textarea.style.opacity = "0";
       document.body.appendChild(textarea);
@@ -142,38 +146,38 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
 
       {/* Share modal */}
       {showShareModal && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-base-100 rounded-xl shadow-2xl w-full max-w-md border-2 border-primary/30 overflow-hidden">
-            {/* Modal header */}
-            <div className="flex items-center justify-between px-5 py-3 bg-primary/10 border-b border-primary/20">
-              <h3 className="text-lg font-bold">Share Course</h3>
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+          <div className="bg-black/50 rounded-2xl shadow-2xl ring-1 ring-white/15 w-full max-w-md overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-5 pb-4">
+              <h3 className="text-lg font-semibold">Share Course</h3>
               <button
                 onClick={() => setShowShareModal(false)}
-                className="btn btn-sm btn-ghost"
+                className="btn btn-sm btn-ghost btn-circle text-base-content/40 hover:text-base-content"
               >
-                ×
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
 
-            <div className="p-5">
+            <div className="px-6 pb-6">
               {/* Loading state */}
               {shareStep && !shareUrl && !shareError && (
                 <div className="flex flex-col items-center gap-3 py-8">
                   <span className="loading loading-spinner loading-lg text-primary" />
-                  <p className="text-sm text-base-content/70 font-medium">{shareStep}</p>
+                  <p className="text-sm text-base-content/60 font-medium">{shareStep}</p>
                 </div>
               )}
 
               {/* Error state */}
               {shareError && (
                 <div className="space-y-4">
-                  <div className="bg-error/10 border border-error/30 rounded-lg p-3 text-sm text-error">
+                  <div className="bg-error/10 border border-error/20 rounded-lg p-3 text-sm text-error">
                     {shareError}
                   </div>
-                  <p className="text-xs text-base-content/50">
+                  <p className="text-xs text-base-content/45">
                     Make sure the course is saved and you are logged in. If running locally,
                     check that the database migration has been applied:{" "}
-                    <code className="bg-base-200 px-1 rounded">npx prisma migrate dev</code>
+                    <code className="bg-base-200 px-1 rounded text-base-content/60">npx prisma migrate dev</code>
                   </p>
                   <div className="flex gap-2">
                     <button onClick={handleShare} className="btn btn-sm btn-primary">
@@ -189,20 +193,20 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
               {/* Success state */}
               {shareUrl && (
                 <div className="space-y-4">
-                  <p className="text-sm text-base-content/70">
+                  <p className="text-sm text-base-content/60">
                     Your course is ready to share. Copy the link below:
                   </p>
                   <input
                     type="text"
                     readOnly
-                    value={shareUrl}
-                    className="input input-bordered w-full text-sm font-mono"
+                    value={shareShortUrl || shareUrl}
+                    className="input input-bordered w-full text-sm font-mono bg-base-200/50"
                     onClick={(e) => (e.target as HTMLInputElement).select()}
                   />
                   <div className="flex gap-2">
                     <button
                       onClick={copyShareUrl}
-                      className="btn btn-primary flex-1"
+                      className="btn btn-sm btn-primary flex-1"
                     >
                       {copying ? "Copied!" : "Copy Link"}
                     </button>
@@ -210,7 +214,7 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
                       href={shareUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="btn btn-outline"
+                      className="btn btn-sm btn-ghost"
                     >
                       Open
                     </a>

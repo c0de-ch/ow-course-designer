@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
-import { useCourseStore, BuoySide, getBuoySide, getRouteParts, getFinishMidpoint } from "@/store/courseStore";
+import { useCourseStore, BuoySide, getBuoySide, getRouteParts, getFinishMidpoint, getMandatoryLaps, getBuoysForLap, getDifferingLaps, parseFreehand, getRaceTotalKm } from "@/store/courseStore";
 import { createMarkerOverlay } from "./MarkerOverlay";
 import { LakeSearch } from "./LakeSearch";
 import { getToolCursorSvg } from "./markers/markerIcons";
@@ -16,13 +16,23 @@ export function DesignerCanvas() {
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const lapPolylinesRef = useRef<google.maps.Polyline[]>([]);
+  const arrowPolylinesRef = useRef<google.maps.Polyline[]>([]);
+  const startLineRef = useRef<google.maps.Polyline | null>(null);
   const entryLineRef = useRef<google.maps.Polyline | null>(null);
   const exitLineRef = useRef<google.maps.Polyline | null>(null);
   const funnelLinesRef = useRef<google.maps.Polyline[]>([]);
   const overlaysRef = useRef<google.maps.OverlayView[]>([]);
   const rescuePolyRef = useRef<google.maps.Polygon | null>(null);
   const rescuePreviewRef = useRef<google.maps.Polyline | null>(null);
+  const freehandPolylinesRef = useRef<google.maps.Polyline[]>([]);
+  const freehandDrawingRef = useRef(false);
+  const freehandPointsRef = useRef<{lat: number; lng: number}[]>([]);
+  const freehandPreviewRef = useRef<google.maps.Polyline | null>(null);
   const [pendingBuoy, setPendingBuoy] = useState<{lat: number; lng: number; screenX: number; screenY: number} | null>(null);
+  const [pendingFreehand, setPendingFreehand] = useState<{path: {lat: number; lng: number}[]; screenX: number; screenY: number} | null>(null);
+  const [freehandLabel, setFreehandLabel] = useState("");
+  const [freehandColor, setFreehandColor] = useState("#FFFFFF");
 
   const {
     courseData,
@@ -113,14 +123,14 @@ export function DesignerCanvas() {
     overlaysRef.current.forEach((o) => o.setMap(null));
     overlaysRef.current = [];
 
-    // Build route-order index map for badges (rescue zones excluded)
+    // Build route-order index map for badges (rescue zones and freehand excluded)
     const routeOrder = [...courseData.elements]
-      .filter((el) => el.type !== "rescue_zone")
+      .filter((el) => el.type !== "rescue_zone" && el.type !== "freehand")
       .sort((a, b) => a.order - b.order);
     const idxMap = new Map(routeOrder.map((el, i) => [el.id, i + 1]));
 
-    // Add fresh overlays
-    courseData.elements.forEach((el) => {
+    // Add fresh overlays (skip freehand — rendered as polylines below)
+    courseData.elements.filter((el) => el.type !== "freehand").forEach((el) => {
       const overlay = createMarkerOverlay(
         el,
         selectedElementId === el.id,
@@ -134,26 +144,100 @@ export function DesignerCanvas() {
 
     // Redraw polylines: solid buoy loop + dashed entry/exit
     if (polylineRef.current) { polylineRef.current.setMap(null); polylineRef.current = null; }
+    lapPolylinesRef.current.forEach((l) => l.setMap(null));
+    lapPolylinesRef.current = [];
+    arrowPolylinesRef.current.forEach((l) => l.setMap(null));
+    arrowPolylinesRef.current = [];
+    if (startLineRef.current) { startLineRef.current.setMap(null); startLineRef.current = null; }
     if (entryLineRef.current) { entryLineRef.current.setMap(null); entryLineRef.current = null; }
     if (exitLineRef.current) { exitLineRef.current.setMap(null); exitLineRef.current = null; }
     funnelLinesRef.current.forEach((l) => l.setMap(null));
     funnelLinesRef.current = [];
+    freehandPolylinesRef.current.forEach((l) => l.setMap(null));
+    freehandPolylinesRef.current = [];
+
+    // Render freehand annotation lines
+    courseData.elements.filter((el) => el.type === "freehand").forEach((el) => {
+      const fh = parseFreehand(el.metadata);
+      if (fh.path.length >= 2) {
+        const pl = new google.maps.Polyline({
+          path: fh.path,
+          geodesic: true,
+          strokeColor: fh.color,
+          strokeOpacity: 0.85,
+          strokeWeight: 4,
+          zIndex: 5,
+          map,
+        });
+        freehandPolylinesRef.current.push(pl);
+      }
+    });
 
     const parts = getRouteParts(courseData.elements);
     const buoys = parts.buoys;
+    const laps = courseData.laps ?? 1;
+    const hasPerLapVariation = buoys.some((b) => getMandatoryLaps(b.metadata) !== null);
 
-    if (buoys.length >= 2) {
-      // Build closed buoy loop with swim-side arc offset
-      const closedBuoys = [...buoys, buoys[0]];
-      const offsetPath = closedBuoys.flatMap((b, i) => {
+    // Helper: build offset path for a set of buoys (closed loop)
+    function buildOffsetPath(loopBuoys: typeof buoys) {
+      const closed = [...loopBuoys, loopBuoys[0]];
+      return closed.flatMap((b, i) => {
         const pt = { lat: b.lat, lng: b.lng };
         const side = getBuoySide(b.metadata);
         if (side === "directional") return [pt];
-        const prev = closedBuoys[(i - 1 + closedBuoys.length) % closedBuoys.length];
-        const next = closedBuoys[(i + 1) % closedBuoys.length];
+        const prev = closed[(i - 1 + closed.length) % closed.length];
+        const next = closed[(i + 1) % closed.length];
         const bearing = computeBearing(prev, next);
         return arcAroundBuoy(pt, bearing, side);
       });
+    }
+
+    // Helper: add segment arrow polylines (invisible line with arrow at midpoint, rendered above route)
+    function addSegmentArrows(segBuoys: typeof buoys, color: string) {
+      const closed = [...segBuoys, segBuoys[0]];
+      for (let j = 0; j < closed.length - 1; j++) {
+        const segLine = new google.maps.Polyline({
+          path: [
+            { lat: closed[j].lat, lng: closed[j].lng },
+            { lat: closed[j + 1].lat, lng: closed[j + 1].lng },
+          ],
+          geodesic: true,
+          strokeOpacity: 0,
+          strokeWeight: 0,
+          zIndex: 10,
+          icons: [{
+            icon: {
+              path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+              scale: 5,
+              fillColor: color,
+              fillOpacity: 1,
+              strokeColor: "#FFFFFF",
+              strokeWeight: 2,
+            },
+            offset: "50%",
+            repeat: "0",
+          }],
+          map,
+        });
+        arrowPolylinesRef.current.push(segLine);
+      }
+    }
+
+    // Buoy loop offset path + entry/exit connection points
+    let loopEntryPoint: { lat: number; lng: number } | null = null;
+    let loopExitPoint: { lat: number; lng: number } | null = null;
+
+    if (buoys.length >= 2) {
+      const offsetPath = buildOffsetPath(buoys);
+
+      // Find the offset path's entry (B1 approach) and exit (Bn departure) points
+      // Each sided buoy contributes 3 arc points, directional buoys contribute 1
+      let totalBuoyPoints = 0;
+      for (const b of buoys) {
+        totalBuoyPoints += getBuoySide(b.metadata) === "directional" ? 1 : 3;
+      }
+      loopEntryPoint = offsetPath[0];
+      loopExitPoint = offsetPath[totalBuoyPoints - 1];
 
       polylineRef.current = new google.maps.Polyline({
         path: offsetPath,
@@ -161,89 +245,177 @@ export function DesignerCanvas() {
         strokeColor: "#3B82F6",
         strokeOpacity: 0.8,
         strokeWeight: 4,
-        icons: [{
-          icon: {
-            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 5,
-            fillColor: "#FBBF24",
-            fillOpacity: 1,
-            strokeColor: "#FFFFFF",
-            strokeWeight: 2,
-          },
-          offset: "5%",
-          repeat: "10%",
-        }],
+        zIndex: 1,
         map,
       });
+      addSegmentArrows(buoys, "#3B82F6");
+
+      // Overlay colored polylines only for shortcut segments (where buoys are skipped)
+      if (hasPerLapVariation && laps > 1) {
+        const diffLaps = getDifferingLaps(courseData.elements, laps);
+        // Build full-route adjacency set: "idA->idB" for each consecutive pair
+        const fullAdj = new Set<string>();
+        for (let j = 0; j < buoys.length; j++) {
+          fullAdj.add(`${buoys[j].id}->${buoys[(j + 1) % buoys.length].id}`);
+        }
+        for (const dl of diffLaps) {
+          const lapBuoys = getBuoysForLap(buoys, dl.lap);
+          const n = lapBuoys.length;
+          if (n < 2) continue;
+          for (let j = 0; j < n; j++) {
+            const a = lapBuoys[j];
+            const b = lapBuoys[(j + 1) % n];
+            if (fullAdj.has(`${a.id}->${b.id}`)) continue; // same as full route
+            // Shortcut segment: compute arc points in lap context
+            const prevA = lapBuoys[(j - 1 + n) % n];
+            const nextB = lapBuoys[(j + 2) % n];
+            const aSide = getBuoySide(a.metadata);
+            const aPt = { lat: a.lat, lng: a.lng };
+            const aArc = aSide === "directional" ? [aPt]
+              : arcAroundBuoy(aPt, computeBearing(prevA, b), aSide);
+            const bSide = getBuoySide(b.metadata);
+            const bPt = { lat: b.lat, lng: b.lng };
+            const bArc = bSide === "directional" ? [bPt]
+              : arcAroundBuoy(bPt, computeBearing(a, nextB), bSide);
+            const pl = new google.maps.Polyline({
+              path: [...aArc, ...bArc],
+              geodesic: true,
+              strokeColor: dl.color,
+              strokeOpacity: 0.8,
+              strokeWeight: 4,
+              map,
+            });
+            lapPolylinesRef.current.push(pl);
+            // Arrow for shortcut
+            arrowPolylinesRef.current.push(new google.maps.Polyline({
+              path: [aPt, bPt],
+              geodesic: true,
+              strokeOpacity: 0,
+              strokeWeight: 0,
+              zIndex: 10,
+              icons: [{
+                icon: {
+                  path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                  scale: 5,
+                  fillColor: dl.color,
+                  fillOpacity: 1,
+                  strokeColor: "#FFFFFF",
+                  strokeWeight: 2,
+                },
+                offset: "50%",
+                repeat: "0",
+              }],
+              map,
+            }));
+          }
+        }
+      }
     }
 
-    // Dashed entry line: Start → first buoy
-    if (parts.start && buoys.length > 0) {
-      entryLineRef.current = new google.maps.Polyline({
+    // Start → first buoy arc entry point (solid orange)
+    if (parts.start && buoys.length >= 1) {
+      const target = loopEntryPoint ?? { lat: buoys[0].lat, lng: buoys[0].lng };
+      startLineRef.current = new google.maps.Polyline({
+        path: [
+          { lat: parts.start.lat, lng: parts.start.lng },
+          target,
+        ],
+        geodesic: true,
+        strokeColor: "#F97316",
+        strokeOpacity: 0.8,
+        strokeWeight: 4,
+        zIndex: 1,
+        map,
+      });
+      // Direction arrow for start → B1
+      arrowPolylinesRef.current.push(new google.maps.Polyline({
         path: [
           { lat: parts.start.lat, lng: parts.start.lng },
           { lat: buoys[0].lat, lng: buoys[0].lng },
         ],
         geodesic: true,
-        strokeColor: "#3B82F6",
+        strokeOpacity: 0,
+        strokeWeight: 0,
+        zIndex: 10,
+        icons: [{
+          icon: {
+            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            scale: 5,
+            fillColor: "#F97316",
+            fillOpacity: 1,
+            strokeColor: "#FFFFFF",
+            strokeWeight: 2,
+          },
+          offset: "50%",
+          repeat: "0",
+        }],
+        map,
+      }));
+    }
+
+    // Dashed entry line: shore_entry → start (green, no arrow — walk/approach)
+    if (parts.shoreEntry && parts.start) {
+      entryLineRef.current = new google.maps.Polyline({
+        path: [
+          { lat: parts.shoreEntry.lat, lng: parts.shoreEntry.lng },
+          { lat: parts.start.lat, lng: parts.start.lng },
+        ],
+        geodesic: true,
+        strokeColor: "#22C55E",
         strokeOpacity: 0.6,
         strokeWeight: 3,
+        zIndex: 10,
         icons: [
           {
             icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 },
             offset: "0",
             repeat: "15px",
-          },
-          {
-            icon: {
-              path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-              scale: 5,
-              fillColor: "#FBBF24",
-              fillOpacity: 1,
-              strokeColor: "#FFFFFF",
-              strokeWeight: 2,
-            },
-            offset: "50%",
-            repeat: "0",
           },
         ],
         map,
       });
     }
 
-    // Dashed exit line: first buoy → finish midpoint
+    // Last buoy arc exit point → finish (solid orange)
     const finishMid = getFinishMidpoint(parts);
     if (finishMid && buoys.length > 0) {
+      const source = loopExitPoint ?? { lat: buoys[buoys.length - 1].lat, lng: buoys[buoys.length - 1].lng };
       exitLineRef.current = new google.maps.Polyline({
         path: [
-          { lat: buoys[0].lat, lng: buoys[0].lng },
+          source,
           { lat: finishMid.lat, lng: finishMid.lng },
         ],
         geodesic: true,
-        strokeColor: "#3B82F6",
-        strokeOpacity: 0.6,
-        strokeWeight: 3,
-        icons: [
-          {
-            icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 },
-            offset: "0",
-            repeat: "15px",
-          },
-          {
-            icon: {
-              path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-              scale: 5,
-              fillColor: "#FBBF24",
-              fillOpacity: 1,
-              strokeColor: "#FFFFFF",
-              strokeWeight: 2,
-            },
-            offset: "50%",
-            repeat: "0",
-          },
-        ],
+        strokeColor: "#F97316",
+        strokeOpacity: 0.8,
+        strokeWeight: 4,
+        zIndex: 1,
         map,
       });
+      // Direction arrow for Bn → finish
+      arrowPolylinesRef.current.push(new google.maps.Polyline({
+        path: [
+          { lat: buoys[buoys.length - 1].lat, lng: buoys[buoys.length - 1].lng },
+          { lat: finishMid.lat, lng: finishMid.lng },
+        ],
+        geodesic: true,
+        strokeOpacity: 0,
+        strokeWeight: 0,
+        zIndex: 10,
+        icons: [{
+          icon: {
+            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            scale: 5,
+            fillColor: "#F97316",
+            fillOpacity: 1,
+            strokeColor: "#FFFFFF",
+            strokeWeight: 2,
+          },
+          offset: "50%",
+          repeat: "0",
+        }],
+        map,
+      }));
     }
 
     // Finish funnel lanes: lines from each funnel post to the finish endpoint
@@ -251,16 +423,6 @@ export function DesignerCanvas() {
       const ep = { lat: parts.finishEndpoint.lat, lng: parts.finishEndpoint.lng };
       const fl = { lat: parts.finishFunnelLeft.lat, lng: parts.finishFunnelLeft.lng };
       const fr = { lat: parts.finishFunnelRight.lat, lng: parts.finishFunnelRight.lng };
-
-      // Connecting line between funnel posts (the wide opening)
-      funnelLinesRef.current.push(new google.maps.Polyline({
-        path: [fl, fr],
-        geodesic: true,
-        strokeColor: "#EF4444",
-        strokeOpacity: 0.9,
-        strokeWeight: 3,
-        map,
-      }));
 
       // Left lane: funnel_left → finish endpoint
       funnelLinesRef.current.push(new google.maps.Polyline({
@@ -313,6 +475,87 @@ export function DesignerCanvas() {
       });
     }
   }, [map, rescueZonePoints, activeTool]);
+
+  // Update freehand preview polyline color when user picks a swatch
+  useEffect(() => {
+    if (freehandPreviewRef.current && pendingFreehand) {
+      freehandPreviewRef.current.setOptions({ strokeColor: freehandColor });
+    }
+  }, [freehandColor, pendingFreehand]);
+
+  // Freehand drawing mode
+  useEffect(() => {
+    if (!map) return;
+    if (activeTool !== "freehand") {
+      map.setOptions({ draggable: true });
+      return;
+    }
+    map.setOptions({ draggable: false });
+
+    const onDown = map.addListener("mousedown", (e: google.maps.MapMouseEvent) => {
+      if (!e.latLng) return;
+      freehandDrawingRef.current = true;
+      freehandPointsRef.current = [{ lat: e.latLng.lat(), lng: e.latLng.lng() }];
+      freehandPreviewRef.current = new google.maps.Polyline({
+        path: freehandPointsRef.current,
+        geodesic: true,
+        strokeColor: "#FFFFFF",
+        strokeOpacity: 0.85,
+        strokeWeight: 4,
+        zIndex: 20,
+        map,
+      });
+    });
+
+    const onMove = map.addListener("mousemove", (e: google.maps.MapMouseEvent) => {
+      if (!freehandDrawingRef.current || !e.latLng) return;
+      freehandPointsRef.current.push({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+      freehandPreviewRef.current?.setPath(freehandPointsRef.current);
+    });
+
+    // Use document-level mouseup/pointerup — Google Maps' mouseup is unreliable on macOS
+    function finishDrawing(e: MouseEvent) {
+      if (!freehandDrawingRef.current) return;
+      freehandDrawingRef.current = false;
+      const pts = freehandPointsRef.current;
+      if (pts.length >= 2) {
+        // Simplify: keep at most ~150 points
+        const simplified = pts.length <= 150 ? pts : (() => {
+          const step = Math.ceil(pts.length / 150);
+          const result = [pts[0]];
+          for (let i = step; i < pts.length - 1; i += step) result.push(pts[i]);
+          result.push(pts[pts.length - 1]);
+          return result;
+        })();
+        const mapRect = mapDivRef.current?.getBoundingClientRect();
+        const sx = mapRect ? e.clientX - mapRect.left : e.clientX;
+        const sy = mapRect ? e.clientY - mapRect.top : e.clientY;
+        setPendingFreehand({ path: simplified, screenX: sx, screenY: sy });
+        setFreehandLabel("");
+        setFreehandColor("#FFFFFF");
+        // Keep preview polyline visible — don't remove it
+      } else {
+        freehandPreviewRef.current?.setMap(null);
+        freehandPreviewRef.current = null;
+      }
+      freehandPointsRef.current = [];
+    }
+    document.addEventListener("mouseup", finishDrawing);
+    document.addEventListener("pointerup", finishDrawing);
+
+    return () => {
+      google.maps.event.removeListener(onDown);
+      google.maps.event.removeListener(onMove);
+      document.removeEventListener("mouseup", finishDrawing);
+      document.removeEventListener("pointerup", finishDrawing);
+      map.setOptions({ draggable: true });
+      if (freehandPreviewRef.current) {
+        freehandPreviewRef.current.setMap(null);
+        freehandPreviewRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, activeTool]);
 
   // Map click handler
   const handleMapClick = useCallback(
@@ -409,6 +652,25 @@ export function DesignerCanvas() {
     setPendingBuoy(null);
   }
 
+  function confirmFreehand() {
+    if (!pendingFreehand) return;
+    addElement({
+      type: "freehand",
+      lat: pendingFreehand.path[0].lat,
+      lng: pendingFreehand.path[0].lng,
+      metadata: JSON.stringify({ path: pendingFreehand.path, label: freehandLabel || undefined, color: freehandColor }),
+    });
+    freehandPreviewRef.current?.setMap(null);
+    freehandPreviewRef.current = null;
+    setPendingFreehand(null);
+  }
+
+  function cancelFreehand() {
+    freehandPreviewRef.current?.setMap(null);
+    freehandPreviewRef.current = null;
+    setPendingFreehand(null);
+  }
+
   // Attach/detach map click listeners
   useEffect(() => {
     if (!map) return;
@@ -473,12 +735,26 @@ export function DesignerCanvas() {
       <RaceBranding />
 
       {/* Legend */}
-      <Legend />
+      <Legend
+        lapColors={getDifferingLaps(courseData.elements, courseData.laps ?? 1)}
+        usedTypes={new Set(courseData.elements.map(e => e.type))}
+        freehandEntries={courseData.elements
+          .filter((el) => el.type === "freehand")
+          .map((el) => parseFreehand(el.metadata))
+          .filter((fh): fh is typeof fh & { label: string } => !!fh.label)
+          .map((fh) => ({ label: fh.label, color: fh.color }))}
+      />
 
       {/* Gate / finish channel hint */}
       {activeTool === "gate" && gateFirstClick && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-base-100 rounded shadow px-4 py-2 text-sm z-10">
           Click to place the second gate post
+        </div>
+      )}
+      {/* Freehand hint */}
+      {activeTool === "freehand" && !pendingFreehand && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-base-100 rounded shadow px-4 py-2 text-sm z-10">
+          Click and drag to draw
         </div>
       )}
       {/* Rescue zone hint */}
@@ -506,25 +782,50 @@ export function DesignerCanvas() {
         </div>
       )}
 
-      {/* Total distance badge */}
-      {courseData.distanceKm != null && courseData.distanceKm > 0 && (
-        <div className="absolute bottom-3 right-28 bg-white/80 backdrop-blur-sm text-gray-900 px-5 py-3 rounded-lg z-10 text-right shadow-lg">
-          {(() => {
-            const loop = courseData.distanceKm!;
-            const entry = courseData.entryDistKm ?? 0;
-            const exit = courseData.exitDistKm ?? 0;
-            const total = entry + loop * courseData.laps + exit;
-            return courseData.laps > 1 || entry > 0 || exit > 0 ? (
-              <>
-                <div className="text-2xl font-bold">{total.toFixed(2)} km total</div>
-                <div className="text-sm text-gray-600">{loop.toFixed(2)} km × {courseData.laps} lap{courseData.laps > 1 ? "s" : ""}</div>
-              </>
-            ) : (
-              <div className="text-2xl font-bold">{loop.toFixed(2)} km</div>
-            );
-          })()}
+      {/* Freehand drawing popup */}
+      {pendingFreehand && (
+        <div className="absolute bg-base-100 rounded shadow-lg px-4 py-3 z-20 flex flex-col gap-2 w-56"
+          style={{ left: Math.min(pendingFreehand.screenX, (mapDivRef.current?.clientWidth ?? 800) - 240), top: pendingFreehand.screenY + 20 }}>
+          <input
+            type="text"
+            value={freehandLabel}
+            onChange={(e) => setFreehandLabel(e.target.value)}
+            placeholder="Label (optional)"
+            className="input input-sm input-bordered w-full"
+            autoFocus
+            onKeyDown={(e) => { if (e.key === "Enter") confirmFreehand(); }}
+          />
+          <div className="flex items-center gap-1.5">
+            {["#FFFFFF","#EF4444","#22C55E","#3B82F6","#FBBF24","#7C3AED"].map((c) => (
+              <button key={c} onClick={() => setFreehandColor(c)}
+                className="w-6 h-6 rounded-full border-2 shrink-0"
+                style={{ background: c, borderColor: freehandColor === c ? "#3B82F6" : "rgba(0,0,0,0.15)" }}
+                title={c} />
+            ))}
+          </div>
+          <div className="flex items-center gap-2 justify-end">
+            <button className="btn btn-xs btn-ghost" onClick={cancelFreehand}>Cancel</button>
+            <button className="btn btn-xs btn-primary" onClick={confirmFreehand}>Save</button>
+          </div>
         </div>
       )}
+
+      {/* Total distance badge */}
+      {(() => {
+        const { totalKm, avgLoopKm } = getRaceTotalKm(courseData);
+        return totalKm > 0 ? (
+          <div className="absolute bottom-3 right-28 bg-white/80 backdrop-blur-sm text-gray-900 px-5 py-3 rounded-lg z-10 text-right shadow-lg">
+            {courseData.laps > 1 ? (
+              <>
+                <div className="text-2xl font-bold">{totalKm.toFixed(2)} km total</div>
+                <div className="text-sm text-gray-600">{avgLoopKm.toFixed(2)} km/lap × {courseData.laps} laps</div>
+              </>
+            ) : (
+              <div className="text-2xl font-bold">{totalKm.toFixed(2)} km</div>
+            )}
+          </div>
+        ) : null;
+      })()}
 
       {!mapsLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-base-200">

@@ -14,7 +14,8 @@ export type ElementType =
   | "gate_right"
   | "shore_entry"
   | "rescue_zone"
-  | "feeding_platform";
+  | "feeding_platform"
+  | "freehand";
 
 export const FINISH_TYPES: ReadonlySet<ElementType> = new Set([
   "finish", "finish_left", "finish_right",
@@ -22,6 +23,19 @@ export const FINISH_TYPES: ReadonlySet<ElementType> = new Set([
 ]);
 
 export type BuoySide = "left" | "right" | "directional";
+
+export function parseFreehand(metadata?: string | null): { path: {lat: number; lng: number}[]; label?: string; color: string } {
+  try {
+    const m = metadata ? JSON.parse(metadata) : null;
+    if (m && typeof m === "object" && !Array.isArray(m) && Array.isArray(m.path)) {
+      return { path: m.path, label: m.label || undefined, color: m.color || "#FFFFFF" };
+    }
+    if (Array.isArray(m)) {
+      return { path: m, color: "#FFFFFF" };
+    }
+  } catch {}
+  return { path: [], color: "#FFFFFF" };
+}
 
 export function getBuoySide(metadata?: string | null): BuoySide {
   try {
@@ -41,6 +55,7 @@ export function setBuoySideInMeta(metadata: string | null | undefined, side: Buo
 }
 
 export interface RouteParts {
+  shoreEntry: CourseElement | undefined;
   start: CourseElement | undefined;
   finishLeft: CourseElement | undefined;
   finishRight: CourseElement | undefined;
@@ -56,6 +71,7 @@ export function getRouteParts(elements: CourseElement[]): RouteParts {
     .filter((el) => el.type !== "rescue_zone" && el.type !== "feeding_platform")
     .sort((a, b) => a.order - b.order);
 
+  const shoreEntry = sorted.find((el) => el.type === "shore_entry");
   const start = sorted.find((el) => el.type === "start");
   const finishEndpoint = sorted.find((el) => el.type === "finish_endpoint");
   const finishLeft = sorted.find((el) => el.type === "finish_left" || el.type === "finish");
@@ -65,7 +81,7 @@ export function getRouteParts(elements: CourseElement[]): RouteParts {
   const buoys = sorted.filter((el) => el.type === "buoy");
   const gates = sorted.filter((el) => el.type === "gate_left" || el.type === "gate_right");
 
-  return { start, finishLeft, finishRight, finishEndpoint, finishFunnelLeft, finishFunnelRight, buoys, gates };
+  return { shoreEntry, start, finishLeft, finishRight, finishEndpoint, finishFunnelLeft, finishFunnelRight, buoys, gates };
 }
 
 /** Finish point: new 3-point model returns endpoint directly; legacy model returns midpoint of channel */
@@ -82,6 +98,107 @@ export function getFinishMidpoint(parts: RouteParts): { lat: number; lng: number
   return parts.finishLeft; // legacy single finish or undefined
 }
 
+/** Parse mandatoryLaps from element metadata — returns null if all laps */
+export function getMandatoryLaps(metadata?: string | null): number[] | null {
+  try {
+    const m = metadata ? JSON.parse(metadata) : null;
+    if (m?.mandatoryLaps) return String(m.mandatoryLaps).split(",").map(Number).filter((n) => !isNaN(n));
+  } catch {}
+  return null;
+}
+
+/** Get the subset of buoys that are active for a given lap number */
+export function getBuoysForLap(buoys: CourseElement[], lap: number): CourseElement[] {
+  return buoys.filter((b) => {
+    const ml = getMandatoryLaps(b.metadata);
+    return ml === null || ml.includes(lap);
+  });
+}
+
+/** Closed-loop distance (km) for one lap's active buoys */
+export function computeLapLoopKm(buoys: CourseElement[], lap: number): number {
+  const lapBuoys = getBuoysForLap(buoys, lap);
+  if (lapBuoys.length < 2) return 0;
+  let km = 0;
+  for (let i = 0; i < lapBuoys.length; i++) {
+    km += haversineDistanceKm(lapBuoys[i], lapBuoys[(i + 1) % lapBuoys.length]);
+  }
+  return km;
+}
+
+/** Compute actual race total distance accounting for per-lap buoy filtering */
+export function getRaceTotalKm(courseData: CourseData): { totalKm: number; avgLoopKm: number } {
+  const parts = getRouteParts(courseData.elements);
+  const buoys = parts.buoys;
+  const laps = courseData.laps ?? 1;
+
+  // Sum each lap's actual closed-loop distance
+  let totalLoopKm = 0;
+  for (let lap = 1; lap <= laps; lap++) {
+    totalLoopKm += computeLapLoopKm(buoys, lap);
+  }
+  const avgLoopKm = laps > 0 ? totalLoopKm / laps : 0;
+
+  // Entry: shore → start
+  let entryKm = 0;
+  if (parts.shoreEntry && parts.start) {
+    entryKm = haversineDistanceKm(parts.shoreEntry, parts.start);
+  }
+
+  // Start → first buoy on lap 1 + last buoy on lap 1 → start (replaces Bn→B1 with Bn→start→B1)
+  let firstLapExtraKm = 0;
+  if (parts.start && buoys.length >= 1) {
+    const lap1Buoys = getBuoysForLap(buoys, 1);
+    if (lap1Buoys.length >= 1) {
+      const b1 = lap1Buoys[0];
+      const bn = lap1Buoys[lap1Buoys.length - 1];
+      firstLapExtraKm =
+        haversineDistanceKm(bn, parts.start) +
+        haversineDistanceKm(parts.start, b1) -
+        haversineDistanceKm(bn, b1);
+    }
+  }
+
+  // Exit: last buoy of last lap → finish
+  const finishMid = getFinishMidpoint(parts);
+  let exitKm = 0;
+  if (finishMid && buoys.length > 0) {
+    const lastLapBuoys = getBuoysForLap(buoys, laps);
+    const lastBuoy = lastLapBuoys.length > 0
+      ? lastLapBuoys[lastLapBuoys.length - 1]
+      : buoys[buoys.length - 1];
+    exitKm = haversineDistanceKm(lastBuoy, finishMid);
+  }
+
+  const totalKm = entryKm + totalLoopKm + firstLapExtraKm + exitKm;
+  return { totalKm, avgLoopKm };
+}
+
+/** Colors for laps that differ from the standard (all-buoys) route */
+export const DIFF_LAP_COLORS = ["#22C55E", "#7C3AED", "#EC4899", "#F97316"];
+
+/**
+ * Compute which laps have a different buoy path from the full set.
+ * Returns only the laps that differ, each with a distinct color.
+ * Laps that use all buoys keep the default blue color and are not listed.
+ */
+export function getDifferingLaps(elements: CourseElement[], laps: number): { lap: number; color: string }[] {
+  const buoys = getRouteParts(elements).buoys;
+  if (buoys.length < 2 || laps <= 1) return [];
+  const hasVariation = buoys.some((b) => getMandatoryLaps(b.metadata) !== null);
+  if (!hasVariation) return [];
+
+  const allBuoyIds = buoys.map((b) => b.id).join(",");
+  const result: { lap: number; color: string }[] = [];
+  for (let lap = 1; lap <= laps; lap++) {
+    const lapBuoys = getBuoysForLap(buoys, lap);
+    if (lapBuoys.map((b) => b.id).join(",") !== allBuoyIds) {
+      result.push({ lap, color: DIFF_LAP_COLORS[result.length % DIFF_LAP_COLORS.length] });
+    }
+  }
+  return result;
+}
+
 export type ActiveTool =
   | "select"
   | "buoy"
@@ -90,7 +207,8 @@ export type ActiveTool =
   | "gate"
   | "shore_entry"
   | "rescue_zone"
-  | "feeding_platform";
+  | "feeding_platform"
+  | "freehand";
 
 export interface CourseElement {
   id: string;
@@ -114,6 +232,8 @@ export interface CourseData {
   entryDistKm?: number | null;
   /** First buoy → finish midpoint distance */
   exitDistKm?: number | null;
+  /** Extra distance on lap 1 from routing through start (start is skipped on laps 2+) */
+  firstLapExtraKm?: number | null;
   elements: CourseElement[];
   laps: number;
   raceLabel?: string | null;
@@ -349,33 +469,44 @@ export const useCourseStore = create<CourseStore>((set, get) => ({
     const parts = getRouteParts(courseData.elements);
     const buoys = parts.buoys;
 
-    // Loop distance = closed buoy circuit (B1→B2→...→Bn→B1)
+    // Loop distance = closed circuit through buoys only (B1→B2→...→Bn→B1)
     let loopKm = 0;
     if (buoys.length >= 2) {
       for (let i = 0; i < buoys.length; i++) {
         const next = buoys[(i + 1) % buoys.length];
         loopKm += haversineDistanceKm(buoys[i], next);
       }
-    } else if (buoys.length === 1) {
-      loopKm = 0;
     }
-
     loopKm = Math.round(loopKm * 1000) / 1000;
 
-    // Entry distance: start → first buoy
-    let entryDistKm = 0;
-    if (parts.start && buoys.length > 0) {
-      entryDistKm = Math.round(haversineDistanceKm(parts.start, buoys[0]) * 1000) / 1000;
+    // First lap extra: start is only visited on lap 1.
+    // Lap 1 replaces Bn→B1 with Bn→start→B1, adding extra distance.
+    let firstLapExtraKm = 0;
+    if (parts.start && buoys.length >= 1) {
+      const b1 = buoys[0];
+      const bn = buoys[buoys.length - 1];
+      firstLapExtraKm =
+        haversineDistanceKm(bn, parts.start) +
+        haversineDistanceKm(parts.start, b1) -
+        haversineDistanceKm(bn, b1);
+      firstLapExtraKm = Math.round(firstLapExtraKm * 1000) / 1000;
     }
 
-    // Exit distance: first buoy → finish midpoint
+    // Entry distance: shore_entry → start
+    let entryDistKm = 0;
+    if (parts.shoreEntry && parts.start) {
+      entryDistKm = Math.round(haversineDistanceKm(parts.shoreEntry, parts.start) * 1000) / 1000;
+    }
+
+    // Exit distance: last buoy → finish midpoint
     const finishMid = getFinishMidpoint(parts);
     let exitDistKm = 0;
     if (finishMid && buoys.length > 0) {
-      exitDistKm = Math.round(haversineDistanceKm(buoys[0], finishMid) * 1000) / 1000;
+      const lastBuoy = buoys[buoys.length - 1];
+      exitDistKm = Math.round(haversineDistanceKm(lastBuoy, finishMid) * 1000) / 1000;
     }
 
-    set({ courseData: { ...courseData, distanceKm: loopKm, entryDistKm, exitDistKm } });
+    set({ courseData: { ...courseData, distanceKm: loopKm, entryDistKm, exitDistKm, firstLapExtraKm } });
   },
 
   resetCourse: () =>

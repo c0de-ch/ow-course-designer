@@ -16,6 +16,7 @@ const TYPE_LABELS: Record<ElementType, string> = {
   shore_entry: "Shore Entry",
   rescue_zone: "Rescue Zone",
   feeding_platform: "Feeding Platform",
+  freehand: "Drawing",
 };
 
 interface CoordinateListModalProps {
@@ -90,26 +91,26 @@ export function CoordinateListModal({ onClose }: CoordinateListModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-      <div className="bg-base-100 rounded-xl shadow-2xl w-full max-w-3xl border-2 border-primary/30 flex flex-col max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+      <div className="bg-black/50 rounded-2xl shadow-2xl ring-1 ring-white/15 w-full max-w-3xl flex flex-col max-h-[90vh] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 bg-primary/10 border-b border-primary/20">
+        <div className="flex items-center justify-between px-6 pt-5 pb-4">
           <div>
-            <h3 className="text-lg font-bold">GPS Coordinates</h3>
-            <p className="text-xs text-base-content/50">
+            <h3 className="text-lg font-semibold">GPS Coordinates</h3>
+            <p className="text-xs text-base-content/45 mt-0.5">
               {courseData.name}
               {courseData.lakeLabel ? ` — ${courseData.lakeLabel}` : ""}
             </p>
           </div>
-          <button onClick={onClose} className="btn btn-sm btn-ghost">
-            ×
+          <button onClick={onClose} className="btn btn-sm btn-ghost btn-circle text-base-content/40 hover:text-base-content">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
 
         {/* Table */}
-        <div className="flex-1 overflow-auto px-5 py-3">
+        <div className="flex-1 overflow-auto px-6 pb-4">
           {elements.length === 0 ? (
-            <p className="text-sm text-base-content/50 py-8 text-center">
+            <p className="text-sm text-base-content/45 py-8 text-center">
               No elements placed yet.
             </p>
           ) : (
@@ -126,9 +127,9 @@ export function CoordinateListModal({ onClose }: CoordinateListModalProps) {
               <tbody>
                 {elements.map((el, i) => (
                   <tr key={el.id}>
-                    <td className="text-base-content/50">{i + 1}</td>
+                    <td className="text-base-content/45">{i + 1}</td>
                     <td>{TYPE_LABELS[el.type]}</td>
-                    <td className="text-base-content/70">{el.label ?? ""}</td>
+                    <td className="text-base-content/60">{el.label ?? ""}</td>
                     <td className="font-mono text-sm">{el.lat.toFixed(6)}</td>
                     <td className="font-mono text-sm">{el.lng.toFixed(6)}</td>
                   </tr>
@@ -139,7 +140,7 @@ export function CoordinateListModal({ onClose }: CoordinateListModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-2 px-5 py-3 border-t border-base-300">
+        <div className="flex items-center gap-2 px-6 py-4 border-t border-base-200">
           <button
             onClick={handleDownloadCsv}
             disabled={elements.length === 0}
@@ -150,7 +151,7 @@ export function CoordinateListModal({ onClose }: CoordinateListModalProps) {
           <button
             onClick={handlePrint}
             disabled={elements.length === 0}
-            className="btn btn-sm btn-outline"
+            className="btn btn-sm btn-ghost"
           >
             Print / PDF
           </button>

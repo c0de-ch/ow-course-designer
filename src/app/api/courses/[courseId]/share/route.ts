@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { encodeCourseData } from "@/lib/course-encoder";
 import { CourseData } from "@/store/courseStore";
+
+function generateShortCode(): string {
+  return crypto.randomBytes(5).toString("base64url").slice(0, 7);
+}
 
 export async function POST(
   req: NextRequest,
@@ -62,14 +67,16 @@ export async function POST(
     };
 
     const payload = encodeCourseData(courseData);
+    const shortCode = generateShortCode();
     const snapshot = await prisma.courseSnapshot.create({
-      data: { courseId, payload, flyoverUrl },
+      data: { courseId, payload, flyoverUrl, shortCode },
     });
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
     return NextResponse.json({
       token: snapshot.token,
       url: `${appUrl}/share/${snapshot.token}`,
+      shortUrl: `${appUrl}/s/${snapshot.shortCode}`,
     });
   } catch (err) {
     console.error("[share] Failed to create snapshot:", err);

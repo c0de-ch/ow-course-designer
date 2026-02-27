@@ -1,5 +1,5 @@
 import { haversineDistanceKm, LatLng } from "@/lib/haversine";
-import { CourseElement, getRouteParts, getFinishMidpoint } from "@/store/courseStore";
+import { CourseElement, getRouteParts, getFinishMidpoint, getBuoysForLap } from "@/store/courseStore";
 
 export interface CameraFrame {
   center: google.maps.LatLngLiteral;
@@ -53,15 +53,6 @@ function lerpAngle(a: number, b: number, t: number): number {
   return ((a + diff * t) % 360 + 360) % 360;
 }
 
-/** Parse mandatoryLaps from gate metadata. Returns null = all laps. */
-function getMandatoryLaps(metadata?: string | null): number[] | null {
-  try {
-    const m = metadata ? JSON.parse(metadata) : null;
-    if (m?.mandatoryLaps) return String(m.mandatoryLaps).split(",").map(Number);
-  } catch { /* ignore */ }
-  return null; // null = all laps
-}
-
 /**
  * Build camera path using new route semantics:
  * - Path: start → buoy loop × laps → finish
@@ -88,42 +79,20 @@ export function buildCameraPath(
     pts.push({ lat: parts.start.lat, lng: parts.start.lng });
   }
 
-  // Collect gate pairs
-  const gatePairs: { mid: LatLng; metadata?: string | null }[] = [];
-  for (const g of parts.gates) {
-    if (g.type === "gate_left") {
-      const right = parts.gates.find(
-        (r) => r.type === "gate_right" && Math.abs(r.order - g.order) === 1
-      );
-      if (right) {
-        gatePairs.push({
-          mid: { lat: (g.lat + right.lat) / 2, lng: (g.lng + right.lng) / 2 },
-          metadata: g.metadata,
-        });
-      }
-    }
-  }
-
   for (let lap = 0; lap < laps; lap++) {
     lapBoundaries.push(pts.length);
     const lapNum = lap + 1;
 
-    // Buoy loop for this lap
-    for (let i = 0; i < buoys.length; i++) {
-      pts.push({ lat: buoys[i].lat, lng: buoys[i].lng });
+    // Per-lap buoy filtering: only include buoys active for this lap
+    const lapBuoys = getBuoysForLap(buoys, lapNum);
+    if (lapBuoys.length === 0) continue;
 
-      // Insert any gates between this buoy and the next that are active this lap
-      for (const gp of gatePairs) {
-        const mandatoryLaps = getMandatoryLaps(gp.metadata);
-        if (mandatoryLaps === null || mandatoryLaps.includes(lapNum)) {
-          // Simple heuristic: insert gate midpoint between buoys if it's roughly
-          // on the path. For now, just include all active gates after the last buoy.
-        }
-      }
+    for (const b of lapBuoys) {
+      pts.push({ lat: b.lat, lng: b.lng });
     }
 
-    // Close the loop back to first buoy
-    pts.push({ lat: buoys[0].lat, lng: buoys[0].lng });
+    // Close the loop back to first buoy of this lap
+    pts.push({ lat: lapBuoys[0].lat, lng: lapBuoys[0].lng });
   }
 
   // Exit: first buoy → finish (only if finish exists)

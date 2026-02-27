@@ -106,6 +106,7 @@ model CourseSnapshot {
   id         String   @id @default(cuid())
   courseId   String
   token      String   @unique @default(cuid())
+  shortCode  String   @unique
   payload    String
   flyoverUrl String?
   createdAt  DateTime @default(now())

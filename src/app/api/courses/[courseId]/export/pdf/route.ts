@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { encodeCourseData } from "@/lib/course-encoder";
@@ -55,7 +56,7 @@ export async function GET(
       };
 
       const snapshot = await prisma.courseSnapshot.create({
-        data: { courseId, payload: encodeCourseData(courseData) },
+        data: { courseId, payload: encodeCourseData(courseData), shortCode: crypto.randomBytes(5).toString("base64url").slice(0, 7) },
       });
 
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";

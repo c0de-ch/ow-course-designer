@@ -1,21 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useCourseStore, getRouteParts, getFinishMidpoint, getBuoySide, CourseData } from "@/store/courseStore";
-import { haversineDistanceKm } from "@/lib/haversine";
+import { useCourseStore, CourseData, getRaceTotalKm, getRouteParts, getFinishMidpoint, getBuoySide } from "@/store/courseStore";
 import { getMarkerSvg } from "./markers/markerIcons";
 import { buildCameraPath, type CameraFrame } from "@/lib/flyover/cameraPath";
 import { computeBearing, arcAroundBuoy } from "@/lib/haversine";
 
-const SWIMMER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 32 32" fill="white" stroke="#3B82F6" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
-  <circle cx="6" cy="15" r="2.2" fill="white" stroke="#3B82F6"/>
-  <path d="M9 14.5c2-1 4-3.5 6-5l2.5 2.5c-2 2-4 3.5-6 4.5" fill="white" stroke="#3B82F6" stroke-width="1.2"/>
-  <path d="M9 14.5l-1.5 3c-.5 1-.2 1.5.5 1.5h3" fill="white" stroke="#3B82F6" stroke-width="1.2"/>
-  <path d="M15 11.5l4-1.5 4.5-.5" fill="none" stroke="#3B82F6" stroke-width="1.5"/>
-  <path d="M11 19l3.5.5 4-1" fill="none" stroke="#3B82F6" stroke-width="1.2"/>
-  <path d="M18.5 18.5l3.5 2 4 1" fill="none" stroke="#3B82F6" stroke-width="1.5"/>
-  <path d="M11.5 16l-2 4.5-3 3" fill="none" stroke="#3B82F6" stroke-width="1.2"/>
-  <path d="M12 17.5l-1 4 1 3.5" fill="none" stroke="#3B82F6" stroke-width="1.2"/>
+const SWIMMER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 32 32" fill="#F97316" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="6" cy="15" r="2.2" fill="#F97316" stroke="white"/>
+  <path d="M9 14.5c2-1 4-3.5 6-5l2.5 2.5c-2 2-4 3.5-6 4.5" fill="#F97316" stroke="white" stroke-width="2"/>
+  <path d="M9 14.5l-1.5 3c-.5 1-.2 1.5.5 1.5h3" fill="#F97316" stroke="white" stroke-width="2"/>
+  <path d="M15 11.5l4-1.5 4.5-.5" fill="none" stroke="white" stroke-width="2"/>
+  <path d="M11 19l3.5.5 4-1" fill="none" stroke="white" stroke-width="2"/>
+  <path d="M18.5 18.5l3.5 2 4 1" fill="none" stroke="white" stroke-width="2"/>
+  <path d="M11.5 16l-2 4.5-3 3" fill="none" stroke="white" stroke-width="2"/>
+  <path d="M12 17.5l-1 4 1 3.5" fill="none" stroke="white" stroke-width="2"/>
 </svg>`;
 
 interface FlyoverModalProps {
@@ -28,7 +27,6 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [duration, setDuration] = useState(-1);
   const [status, setStatus] = useState<"idle" | "previewing" | "recording" | "done">("idle");
   const [progress, setProgress] = useState(0);
   const [statusMsg, setStatusMsg] = useState("Initializing map...");
@@ -44,48 +42,10 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
   const courseData = courseDataProp ?? storeCourseData;
   const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || undefined;
 
-  // Compute total route distance to derive sensible durations
-  const routeDistKm = (() => {
-    const parts = getRouteParts(courseData.elements);
-    const buoys = parts.buoys;
-    if (buoys.length < 2) return 0;
-    let dist = 0;
-    // Entry
-    if (parts.start && buoys.length > 0) {
-      dist += haversineDistanceKm(parts.start, buoys[0]);
-    }
-    // Buoy loop × laps
-    let loop = 0;
-    for (let i = 0; i < buoys.length; i++) {
-      loop += haversineDistanceKm(buoys[i], buoys[(i + 1) % buoys.length]);
-    }
-    dist += loop * (courseData.laps ?? 1);
-    // Exit
-    const finMid = getFinishMidpoint(parts);
-    if (finMid && buoys.length > 0) {
-      dist += haversineDistanceKm(buoys[0], finMid);
-    }
-    return dist;
-  })();
-
-  // Duration options scaled to route distance
-  // Short ≈ 3s/100m, Medium ≈ 6s/100m, Long ≈ 10s/100m
-  const durationOptions = (() => {
-    const distM = routeDistKm * 1000;
-    const round5 = (v: number) => Math.round(v / 5) * 5;
-    return {
-      short:  Math.max(10, Math.min(60, round5(distM * 0.03))),
-      medium: Math.max(20, Math.min(120, round5(distM * 0.06))),
-      long:   Math.max(30, Math.min(180, round5(distM * 0.10))),
-    };
-  })();
-
-  // Set initial duration to medium
-  useEffect(() => {
-    if (duration === -1 && durationOptions.medium > 0) {
-      setDuration(durationOptions.medium);
-    }
-  }, [duration, durationOptions.medium]);
+  // Auto-compute route distance and duration (~6s/100m, clamped 10-120s)
+  const { totalKm, avgLoopKm } = getRaceTotalKm(courseData);
+  const round5 = (v: number) => Math.round(v / 5) * 5;
+  const duration = Math.max(10, Math.min(120, round5(totalKm * 1000 * 0.06)));
 
   // Initialize map — google.maps is already loaded by DesignerCanvas
   useEffect(() => {
@@ -282,29 +242,18 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
       swimmerOverlay.setMap(map);
       swimmerOverlayRef.current = swimmerOverlay;
 
-      // Build camera path (with laps) — only if duration is set
+      // Build camera path (with laps)
       const laps = courseData.laps ?? 1;
-      const effectiveDuration = duration > 0 ? duration : durationOptions.medium;
-      framesRef.current = buildCameraPath(courseData.elements, effectiveDuration, 30, laps);
+      framesRef.current = buildCameraPath(courseData.elements, duration, 30, laps);
 
       if (framesRef.current.length === 0) {
         setStatusMsg("Need at least 2 route points for flyover");
       } else {
-        setStatusMsg(`Ready — ${effectiveDuration}s, ${laps} lap${laps > 1 ? "s" : ""}`);
+        setStatusMsg(`Ready — ${duration}s, ${laps} lap${laps > 1 ? "s" : ""}`);
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Rebuild frames when duration changes
-  useEffect(() => {
-    if (!mapReady || duration <= 0) return;
-    const laps = courseData.laps ?? 1;
-    framesRef.current = buildCameraPath(courseData.elements, duration, 30, laps);
-    if (framesRef.current.length > 0) {
-      setStatusMsg(`Ready — ${duration}s, ${laps} lap${laps > 1 ? "s" : ""}`);
-    }
-  }, [duration, mapReady, courseData.elements, courseData.laps]);
 
   const moveSwimmer = useCallback((pos: google.maps.LatLngLiteral) => {
     swimmerPosRef.current = new google.maps.LatLng(pos.lat, pos.lng);
@@ -487,16 +436,16 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
   const busy = status === "previewing" || status === "recording";
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-      <div className="bg-base-100 rounded-xl shadow-2xl border-2 border-primary/30 flex flex-col w-full max-w-4xl max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+      <div className="bg-black/50 rounded-2xl shadow-2xl ring-1 ring-white/15 flex flex-col w-full max-w-4xl max-h-[90vh] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-base-300">
-          <h2 className="text-lg font-bold">Flyover</h2>
-          <span className="text-xs text-base-content/50 truncate flex-1">
+        <div className="flex items-center gap-3 px-6 pt-5 pb-3">
+          <h2 className="text-lg font-semibold">Flyover</h2>
+          <span className="text-xs text-base-content/45 truncate flex-1">
             {statusMsg}
           </span>
-          <button onClick={handleClose} className="btn btn-sm btn-ghost">
-            Close
+          <button onClick={handleClose} className="btn btn-sm btn-ghost btn-circle text-base-content/40 hover:text-base-content">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
 
@@ -539,43 +488,23 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
           )}
 
           {/* Distance + laps overlay — hidden during preview/recording */}
-          {!busy && courseData.distanceKm != null && courseData.distanceKm > 0 && (
+          {!busy && totalKm > 0 && (
             <div className="absolute bottom-3 right-28 z-10 bg-white/80 backdrop-blur-sm text-gray-900 px-5 py-3 rounded-lg text-right pointer-events-none shadow-lg">
-              {(() => {
-                const loop = courseData.distanceKm!;
-                const entry = courseData.entryDistKm ?? 0;
-                const exit = courseData.exitDistKm ?? 0;
-                const laps = courseData.laps ?? 1;
-                const total = entry + loop * laps + exit;
-                return laps > 1 || entry > 0 || exit > 0 ? (
-                  <>
-                    <div className="text-2xl font-bold">{total.toFixed(2)} km</div>
-                    <div className="text-sm text-gray-600">{loop.toFixed(2)} km × {laps} lap{laps > 1 ? "s" : ""}</div>
-                  </>
-                ) : (
-                  <div className="text-2xl font-bold">{loop.toFixed(2)} km</div>
-                );
-              })()}
+              {(courseData.laps ?? 1) > 1 ? (
+                <>
+                  <div className="text-2xl font-bold">{totalKm.toFixed(2)} km</div>
+                  <div className="text-sm text-gray-600">{avgLoopKm.toFixed(2)} km/lap × {courseData.laps} laps</div>
+                </>
+              ) : (
+                <div className="text-2xl font-bold">{totalKm.toFixed(2)} km</div>
+              )}
             </div>
           )}
         </div>
 
         {/* Controls */}
-        <div className="flex items-center gap-3 px-4 py-3 border-t border-base-300">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium">Duration:</label>
-            <select
-              className="select select-sm"
-              value={duration}
-              onChange={(e) => setDuration(Number(e.target.value))}
-              disabled={busy}
-            >
-              <option value={durationOptions.short}>Short ({durationOptions.short}s)</option>
-              <option value={durationOptions.medium}>Medium ({durationOptions.medium}s)</option>
-              <option value={durationOptions.long}>Long ({durationOptions.long}s)</option>
-            </select>
-          </div>
-
+        <div className="flex items-center gap-3 px-6 py-4 border-t border-base-200">
+          <span className="text-sm text-base-content/50">{duration}s</span>
           <div className="flex-1" />
 
           <button

@@ -211,6 +211,7 @@ export function getMarkerSvg(type: ElementType, selected: boolean, metadata?: st
     case "shore_entry":         return shoreEntrySvg(selected);
     case "rescue_zone":         return rescueZoneSvg(selected);
     case "feeding_platform":    return feedingPlatformSvg(selected);
+    case "freehand":            return ""; // No marker icon — rendered as polyline
   }
 }
 
@@ -233,6 +234,11 @@ export function getToolCursorSvg(tool: ActiveTool): string | null {
       return rescueZoneSvg(false);
     case "feeding_platform":
       return feedingPlatformSvg(false);
+    case "freehand":
+      return `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="14" cy="14" r="11" fill="white" fill-opacity="0.8" stroke="rgba(0,0,0,0.4)" stroke-width="1.5"/>
+        <path d="M8 18l3-4 3 3 4-6 2 3" fill="none" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`;
     default:
       return null;
   }
