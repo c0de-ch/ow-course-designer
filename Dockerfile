@@ -55,8 +55,8 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# Install Prisma CLI with all its dependencies (for migrate deploy at startup)
-RUN npm init -y > /dev/null 2>&1 && npm install --no-save prisma && rm package.json
+# Install Prisma CLI in isolated directory (avoids peer dep conflicts with app node_modules)
+RUN cd /tmp && npm init -y > /dev/null 2>&1 && npm install prisma && mv node_modules/prisma /app/node_modules/prisma && rm -rf /tmp/node_modules /tmp/package.json /tmp/package-lock.json
 
 EXPOSE 3000
 
