@@ -3,7 +3,7 @@ set -euo pipefail
 
 SERVER="${DEPLOY_SERVER:?Set DEPLOY_SERVER=user@host}"
 REMOTE_DIR="${DEPLOY_DIR:-/srv/ow-course-designer}"
-IMAGE_NAME="ow-course-designer:latest"
+IMAGE="ghcr.io/c0de-ch/ow-course-designer:latest"
 
 echo "==> Pre-flight: checking /etc/ow-course-designer/.env on $SERVER..."
 ssh "$SERVER" "test -f /etc/ow-course-designer/.env" || {
@@ -12,20 +12,18 @@ ssh "$SERVER" "test -f /etc/ow-course-designer/.env" || {
   exit 1
 }
 
-echo "==> Building Docker image..."
-docker build -t "$IMAGE_NAME" .
+echo "==> Copying compose file to $SERVER..."
+scp docker-compose.prod.yml "$SERVER:$REMOTE_DIR/"
 
-echo "==> Saving and transferring image to $SERVER..."
-docker save "$IMAGE_NAME" | ssh "$SERVER" docker load
-
-echo "==> Deploying on $SERVER..."
+echo "==> Pulling image and deploying on $SERVER..."
 ssh "$SERVER" "
   set -e
   mkdir -p /var/lib/ow-course-designer/flyovers
   mkdir -p /var/log/ow-course-designer
+  podman pull $IMAGE
   cd $REMOTE_DIR
-  docker compose -f docker-compose.prod.yml pull 2>/dev/null || true
-  docker compose -f docker-compose.prod.yml up -d --remove-orphans
+  podman compose -f docker-compose.prod.yml up -d --remove-orphans
+  podman image prune -f
 "
 
 echo "==> Deployment complete!"
