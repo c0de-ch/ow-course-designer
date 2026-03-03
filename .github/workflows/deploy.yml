@@ -18,25 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Copy compose file to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_SERVER }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: "docker-compose.prod.yml"
-          target: /srv/ow-course-designer
+      - name: Copy compose file
+        run: cp docker-compose.prod.yml /srv/ow-course-designer/
 
       - name: Deploy
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DEPLOY_SERVER }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            cd /srv/ow-course-designer
-            mkdir -p /var/lib/ow-course-designer/flyovers
-            mkdir -p /var/log/ow-course-designer
-            podman pull ${{ env.IMAGE }}
-            podman compose -f docker-compose.prod.yml up -d --remove-orphans
-            podman image prune -f
+        run: |
+          mkdir -p /var/lib/ow-course-designer/flyovers
+          mkdir -p /var/log/ow-course-designer
+          cd /srv/ow-course-designer
+          podman pull ${{ env.IMAGE }}
+          podman compose -f docker-compose.prod.yml up -d --remove-orphans
+          podman image prune -f
