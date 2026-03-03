@@ -18,13 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Copy compose file
-        run: cp docker-compose.prod.yml /srv/ow-course-designer/
-
       - name: Deploy
         run: |
+          mkdir -p /srv/ow-course-designer
           mkdir -p /var/lib/ow-course-designer/flyovers
           mkdir -p /var/log/ow-course-designer
+          cp docker-compose.prod.yml /srv/ow-course-designer/
           cd /srv/ow-course-designer
           podman pull ${{ env.IMAGE }}
           podman compose -f docker-compose.prod.yml up -d --remove-orphans
