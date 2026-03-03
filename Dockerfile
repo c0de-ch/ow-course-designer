@@ -55,8 +55,8 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# Install Prisma CLI in isolated directory (avoids peer dep conflicts with app node_modules)
-RUN mkdir /prisma-cli && cd /prisma-cli && npm init -y > /dev/null 2>&1 && npm install prisma
+# Copy full node_modules to isolated dir for Prisma CLI (migrate deploy needs all transitive deps)
+COPY --from=deps /app/node_modules /prisma-cli/node_modules
 
 EXPOSE 3000
 
