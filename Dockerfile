@@ -54,7 +54,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+
+# Install Prisma CLI with all its dependencies (for migrate deploy at startup)
+COPY --from=builder /app/package.json ./package.json
+RUN npm install --no-save prisma && rm package.json
 
 EXPOSE 3000
 
@@ -64,4 +67,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 # Create data directory for flyover videos (mount as volume in production)
 RUN mkdir -p /app/data/flyovers
 
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
