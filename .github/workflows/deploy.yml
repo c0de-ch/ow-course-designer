@@ -37,6 +37,8 @@ jobs:
             mkdir -p /var/lib/ow-course-designer/flyovers
             mkdir -p /var/log/ow-course-designer
             podman pull ${{ env.IMAGE }}
+            podman stop ow-course-designer 2>/dev/null || true
+            podman rm ow-course-designer 2>/dev/null || true
             podman compose -f docker-compose.prod.yml up -d --remove-orphans
             podman image prune -f
           "
