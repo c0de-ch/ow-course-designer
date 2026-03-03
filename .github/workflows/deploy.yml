@@ -1,29 +1,30 @@
-name: Build & Deploy
+name: Deploy
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Build & Push to GHCR"]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}:latest
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: docker build -t ow-course-designer:latest .
-
-      - name: Save image
-        run: docker save ow-course-designer:latest | gzip > image.tar.gz
-
-      - name: Copy to server
+      - name: Copy compose file to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: "image.tar.gz,docker-compose.prod.yml"
+          source: "docker-compose.prod.yml"
           target: /srv/ow-course-designer
 
       - name: Deploy
@@ -36,7 +37,6 @@ jobs:
             cd /srv/ow-course-designer
             mkdir -p /var/lib/ow-course-designer/flyovers
             mkdir -p /var/log/ow-course-designer
-            gunzip -c image.tar.gz | docker load
-            rm image.tar.gz
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            docker image prune -f
+            podman pull ${{ env.IMAGE }}
+            podman compose -f docker-compose.prod.yml up -d --remove-orphans
+            podman image prune -f

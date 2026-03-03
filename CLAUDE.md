@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **NextAuth.js v4** — Credentials (email/password) + Google OAuth, JWT sessions
 - **Zustand** — client state for the designer canvas
 - **Puppeteer** — PDF and PNG export (uses system Chromium in Docker)
-- **Docker** — multi-stage build, SSH deployment
+- **Docker/Podman** — multi-stage build, GHCR images, Podman on server
 
 ## Dev Commands
 
@@ -27,8 +27,8 @@ npx prisma migrate dev            # Run migrations in dev (creates/updates dev.d
 npx prisma migrate deploy         # Apply migrations in production
 npx prisma studio                 # DB GUI at http://localhost:5555
 npx prisma generate               # Regenerate Prisma client after schema changes
-docker build -t ow-course-designer .
-bash deploy.sh                    # Deploy to server via SSH (needs DEPLOY_SERVER env var)
+docker build -t ow-course-designer .    # Local build (CI pushes to GHCR)
+bash deploy.sh                    # Pull from GHCR & deploy via SSH (needs DEPLOY_SERVER env var)
 ```
 
 ## Environment Variables
@@ -130,9 +130,11 @@ Key properties on `Place`: `displayName`, `location`, `formattedAddress`, `viewp
 
 Production URL: `https://ow-course-designer.c0de.ch` — runs on port **3010** behind Cloudflare proxy.
 
+Container images are pushed to GHCR (`ghcr.io/c0de-ch/ow-course-designer`) by GitHub Actions on every push to `main` and on version tags. The server uses **Podman** to pull and run containers.
+
 ```bash
-export DEPLOY_SERVER=owdesigner@your-server.com
-export DEPLOY_DIR=/srv/ow-course-designer
+# Manual deploy (pulls from GHCR, restarts via Podman on server)
+export DEPLOY_SERVER=owcourse@ow-course-designer.c0de.ch
 bash deploy.sh
 ```
 

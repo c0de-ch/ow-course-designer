@@ -29,7 +29,7 @@ RUN yarn build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-LABEL org.opencontainers.image.source="https://github.com/kim/ow-course-designer"
+LABEL org.opencontainers.image.source="https://github.com/c0de-ch/ow-course-designer"
 LABEL org.opencontainers.image.description="Open-water swim course designer"
 
 # Install Chromium for Puppeteer
