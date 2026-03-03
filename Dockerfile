@@ -56,8 +56,7 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 # Install Prisma CLI with all its dependencies (for migrate deploy at startup)
-COPY --from=builder /app/package.json ./package.json
-RUN npm install --no-save prisma && rm package.json
+RUN npm init -y > /dev/null 2>&1 && npm install --no-save prisma && rm package.json
 
 EXPOSE 3000
 
