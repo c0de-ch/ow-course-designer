@@ -56,7 +56,7 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 # Install Prisma CLI in isolated directory (avoids peer dep conflicts with app node_modules)
-RUN cd /tmp && npm init -y > /dev/null 2>&1 && npm install prisma && mv node_modules/prisma /app/node_modules/prisma && rm -rf /tmp/node_modules /tmp/package.json /tmp/package-lock.json
+RUN mkdir /prisma-cli && cd /prisma-cli && npm init -y > /dev/null 2>&1 && npm install prisma
 
 EXPOSE 3000
 
@@ -66,4 +66,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 # Create data directory for flyover videos (mount as volume in production)
 RUN mkdir -p /app/data/flyovers
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
+CMD ["sh", "-c", "node /prisma-cli/node_modules/prisma/build/index.js migrate deploy && node server.js"]
