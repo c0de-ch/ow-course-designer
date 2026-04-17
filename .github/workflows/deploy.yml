@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE: ghcr.io/${{ github.repository }}:latest
+  REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
   deploy:
@@ -17,6 +17,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve image tag to deploy
+        id: image
+        run: |
+          # Pin to the exact commit SHA that the triggering build produced.
+          # ghcr.yml pushes `type=sha` which renders as sha-<short7>.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          else
+            SHORT_SHA=$(echo "${{ github.event.workflow_run.head_sha }}" | cut -c1-7)
+          fi
+          echo "tag=${{ env.REGISTRY_IMAGE }}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Setup SSH key
         run: |
@@ -31,12 +43,16 @@ jobs:
             ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_SERVER }}:/srv/ow-course-designer/
 
       - name: Deploy
+        env:
+          IMAGE: ${{ steps.image.outputs.tag }}
         run: |
           ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_SERVER }} "
             cd /srv/ow-course-designer
             mkdir -p /var/lib/ow-course-designer/flyovers
             mkdir -p /var/log/ow-course-designer
-            podman pull ${{ env.IMAGE }}
+            podman pull ${IMAGE}
+            # Retag locally so the compose file (which pins :latest) picks up the exact build
+            podman tag ${IMAGE} ${{ env.REGISTRY_IMAGE }}:latest
             podman stop ow-course-designer 2>/dev/null || true
             podman rm ow-course-designer 2>/dev/null || true
             podman compose -f docker-compose.prod.yml up -d --remove-orphans
