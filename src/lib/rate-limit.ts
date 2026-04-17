@@ -45,3 +45,7 @@ export function getRequestIp(headers: Headers): string {
   if (forwarded) return forwarded.split(",")[0].trim();
   return headers.get("x-real-ip") ?? "unknown";
 }
+
+export function _resetRateLimitsForTests(): void {
+  buckets.clear();
+}
