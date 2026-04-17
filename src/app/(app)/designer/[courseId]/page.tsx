@@ -110,15 +110,16 @@ export default function DesignerPage({ params }: Props) {
   return (
     <div className="flex flex-col h-screen bg-base-100">
       {/* Header */}
-      <header className="flex items-center gap-3 px-4 py-2 bg-base-100 border-b border-base-300 z-20">
-        <Link href="/dashboard" className="btn btn-ghost btn-sm">
-          ← Dashboard
+      <header className="flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-base-100 border-b border-base-300 z-20">
+        <Link href="/dashboard" className="btn btn-ghost btn-sm" aria-label="Back to dashboard">
+          ← <span className="hidden sm:inline">Dashboard</span>
         </Link>
 
         <button
           onClick={handleRename}
-          className="text-base font-semibold hover:underline cursor-pointer truncate max-w-xs"
+          className="text-sm sm:text-base font-semibold hover:underline cursor-pointer truncate max-w-[40vw] sm:max-w-xs"
           title="Click to rename"
+          aria-label={`Course name: ${courseName || "Untitled Course"}. Click to rename.`}
         >
           {courseName || "Untitled Course"}
         </button>
@@ -126,7 +127,7 @@ export default function DesignerPage({ params }: Props) {
         <div className="flex-1" />
 
         {/* Save status text */}
-        <span className="text-xs text-base-content/50">
+        <span className="text-xs text-base-content/50 hidden sm:inline" role="status" aria-live="polite">
           {statusMessage
             ? statusMessage
             : isDirty
@@ -138,12 +139,13 @@ export default function DesignerPage({ params }: Props) {
 
         {/* Auto-save toggle */}
         <label className="flex items-center gap-1.5 cursor-pointer text-xs">
-          <span className="text-base-content/60">Auto-save</span>
+          <span className="text-base-content/60 hidden sm:inline">Auto-save</span>
           <input
             type="checkbox"
             className="toggle toggle-xs toggle-primary"
             checked={autoSaveEnabled}
             onChange={(e) => setAutoSaveEnabled(e.target.checked)}
+            aria-label="Toggle auto-save"
           />
         </label>
 
@@ -153,6 +155,7 @@ export default function DesignerPage({ params }: Props) {
             onClick={saveCourse}
             disabled={saving || !isDirty}
             className="btn btn-sm btn-primary"
+            aria-label={saving ? "Saving course" : "Save course"}
           >
             {saving ? "Saving..." : "Save"}
           </button>
@@ -160,9 +163,12 @@ export default function DesignerPage({ params }: Props) {
       </header>
 
       {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Left sidebar */}
-        <aside className="w-64 bg-base-100 border-r border-base-300 flex flex-col overflow-y-auto z-10">
+        <aside
+          className="w-full md:w-64 max-h-[40vh] md:max-h-none bg-base-100 border-b md:border-b-0 md:border-r border-base-300 flex flex-col overflow-y-auto z-10"
+          aria-label="Designer controls"
+        >
           <ToolPanel />
           <RoutePanel />
           <div className="flex-1" />
@@ -170,7 +176,7 @@ export default function DesignerPage({ params }: Props) {
         </aside>
 
         {/* Map canvas */}
-        <main className="flex-1 relative overflow-hidden">
+        <main className="flex-1 relative overflow-hidden min-h-[60vh] md:min-h-0">
           <DesignerCanvas />
         </main>
       </div>

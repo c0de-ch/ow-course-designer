@@ -106,26 +106,29 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
       <div className="flex flex-col gap-1.5">
         <button
           onClick={() => setShowExportModal(true)}
+          aria-label="Open export dialog"
           className="btn btn-primary justify-start gap-3 w-full font-normal transition-all duration-150"
         >
-          <span className="text-lg w-6 text-center">📦</span>
+          <span className="text-lg w-6 text-center" aria-hidden="true">📦</span>
           <span>Export</span>
         </button>
 
         <button
           onClick={() => setShowFlyover(true)}
+          aria-label={hasFlyover ? "Preview or re-record flyover video (recording ready)" : "Record a flyover video"}
           className="btn btn-ghost justify-start gap-3 w-full font-normal transition-all duration-150"
         >
-          <span className="text-lg w-6 text-center">🎬</span>
+          <span className="text-lg w-6 text-center" aria-hidden="true">🎬</span>
           <span>Flyover Video</span>
           {hasFlyover && <span className="badge badge-xs badge-success ml-auto">ready</span>}
         </button>
 
         <button
           onClick={handleShare}
+          aria-label={hasFlyover ? "Share course with flyover" : "Generate shareable link"}
           className="btn btn-ghost justify-start gap-3 w-full font-normal transition-all duration-150"
         >
-          <span className="text-lg w-6 text-center">🔗</span>
+          <span className="text-lg w-6 text-center" aria-hidden="true">🔗</span>
           <span>{hasFlyover ? "Share (+ flyover)" : "Share Link"}</span>
         </button>
       </div>
@@ -146,13 +149,19 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
 
       {/* Share modal */}
       {showShareModal && (
-        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+        <div
+          className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="share-modal-heading"
+        >
           <div className="bg-black/50 rounded-2xl shadow-2xl ring-1 ring-white/15 w-full max-w-md overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between px-6 pt-5 pb-4">
-              <h3 className="text-lg font-semibold">Share Course</h3>
+              <h3 className="text-lg font-semibold" id="share-modal-heading">Share Course</h3>
               <button
                 onClick={() => setShowShareModal(false)}
+                aria-label="Close share dialog"
                 className="btn btn-sm btn-ghost btn-circle text-base-content/40 hover:text-base-content"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
