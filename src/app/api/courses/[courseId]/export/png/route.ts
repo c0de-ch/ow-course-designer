@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { encodeCourseData } from "@/lib/course-encoder";
-import { withBrowser, ExportQueueTimeoutError } from "@/lib/puppeteer";
-import { CourseData } from "@/store/courseStore";
+import {
+  ExportQueueTimeoutError,
+  courseRecordToData,
+  createSnapshotPrintUrl,
+  pngResponse,
+  queueBusyResponse,
+  renderPng,
+} from "@/lib/export/export-helpers";
 import { tracer } from "@/lib/otel/tracer";
 import { exportDurationHistogram, exportsSuccessCounter, exportsFailureCounter } from "@/lib/otel/metrics";
 
@@ -34,60 +38,20 @@ export async function GET(
         return new NextResponse("Not found", { status: 404 });
       }
 
-      const courseData: CourseData = {
-        id: course.id,
-        name: course.name,
-        lakeLabel: course.lakeLabel,
-        lakeLatLng: course.lakeLatLng,
-        zoomLevel: course.zoomLevel,
-        distanceKm: course.distanceKm,
-        laps: course.laps ?? 1,
-        raceLabel: course.raceLabel ?? null,
-        raceLogo: course.raceLogo ?? null,
-        elements: course.elements.map((el) => ({
-          id: el.id,
-          type: el.type as CourseData["elements"][0]["type"],
-          lat: el.lat,
-          lng: el.lng,
-          order: el.order,
-          label: el.label,
-          metadata: el.metadata,
-        })),
-      };
-
-      const snapshot = await prisma.courseSnapshot.create({
-        data: { courseId, payload: encodeCourseData(courseData), shortCode: crypto.randomBytes(5).toString("base64url").slice(0, 7) },
-      });
-
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-      const printUrl = `${appUrl}/share/${snapshot.token}?print=1`;
-
-      const screenshot = await withBrowser(async (browser) => {
-        const page = await browser.newPage();
-        await page.setViewport({ width: 1280, height: 900 });
-        await page.goto(printUrl, { waitUntil: "networkidle0", timeout: 30000 });
-        await page.waitForSelector("#map-ready", { timeout: 20000 });
-        return page.screenshot({ type: "png", fullPage: false });
-      });
+      const courseData = courseRecordToData(course);
+      const printUrl = await createSnapshotPrintUrl(courseId, courseData);
+      const screenshot = await renderPng(printUrl);
 
       exportDurationHistogram.record(Date.now() - start, { format: "png" });
       exportsSuccessCounter.add(1, { format: "png" });
       span.setStatus({ code: 0 });
 
-      const filename = `${course.name.replace(/[^a-z0-9]/gi, "_")}.png`;
-      return new NextResponse(Buffer.from(screenshot), {
-        headers: {
-          "Content-Type": "image/png",
-          "Content-Disposition": `attachment; filename="${filename}"`,
-        },
-      });
+      return pngResponse(screenshot, course.name);
     } catch (err) {
       exportsFailureCounter.add(1, { format: "png" });
       span.recordException(err as Error);
       span.setStatus({ code: 2, message: (err as Error).message });
-      if (err instanceof ExportQueueTimeoutError) {
-        return new NextResponse("Export server busy, please retry", { status: 503 });
-      }
+      if (err instanceof ExportQueueTimeoutError) return queueBusyResponse();
       throw err;
     } finally {
       span.end();

@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { decodeCourseData } from "@/lib/course-encoder";
-import { withBrowser, ExportQueueTimeoutError } from "@/lib/puppeteer";
+import {
+  ExportQueueTimeoutError,
+  pngResponse,
+  queueBusyResponse,
+  renderPng,
+  shareTokenPrintUrl,
+} from "@/lib/export/export-helpers";
 
 export async function GET(
   _req: NextRequest,
@@ -9,37 +15,18 @@ export async function GET(
 ) {
   const { token } = await params;
 
-  const snapshot = await prisma.courseSnapshot.findUnique({
-    where: { token },
-  });
+  const snapshot = await prisma.courseSnapshot.findUnique({ where: { token } });
   if (!snapshot) {
     return new NextResponse("Not found", { status: 404 });
   }
 
   const courseData = decodeCourseData(snapshot.payload);
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const printUrl = `${appUrl}/share/${token}?print=1`;
 
   try {
-    const screenshot = await withBrowser(async (browser) => {
-      const page = await browser.newPage();
-      await page.setViewport({ width: 1280, height: 900 });
-      await page.goto(printUrl, { waitUntil: "networkidle0", timeout: 30000 });
-      await page.waitForSelector("#map-ready", { timeout: 20000 });
-      return page.screenshot({ type: "png", fullPage: false });
-    });
-
-    const filename = `${courseData.name.replace(/[^a-z0-9]/gi, "_")}.png`;
-    return new NextResponse(Buffer.from(screenshot), {
-      headers: {
-        "Content-Type": "image/png",
-        "Content-Disposition": `attachment; filename="${filename}"`,
-      },
-    });
+    const screenshot = await renderPng(shareTokenPrintUrl(token));
+    return pngResponse(screenshot, courseData.name);
   } catch (err) {
-    if (err instanceof ExportQueueTimeoutError) {
-      return new NextResponse("Export server busy, please retry", { status: 503 });
-    }
+    if (err instanceof ExportQueueTimeoutError) return queueBusyResponse();
     throw err;
   }
 }
