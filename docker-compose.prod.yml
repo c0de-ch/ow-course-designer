@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   app:
-    image: ghcr.io/c0de-ch/ow-course-designer:latest
+    image: ${OW_IMAGE:-ghcr.io/c0de-ch/ow-course-designer:latest}
     container_name: ow-course-designer
     restart: unless-stopped
     ports:

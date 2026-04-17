@@ -10,25 +10,36 @@ on:
 env:
   REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
 
+# Serialize deploys so overlapping merges don't race to retag :latest.
+# Cancel any queued-but-not-started run so the newest commit wins.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: kimlab
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Resolve image tag to deploy
-        id: image
+      - name: Resolve commit SHA
+        id: sha
         run: |
-          # Pin to the exact commit SHA that the triggering build produced.
-          # ghcr.yml pushes `type=sha` which renders as sha-<short7>.
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            FULL_SHA="${{ github.sha }}"
           else
-            SHORT_SHA=$(echo "${{ github.event.workflow_run.head_sha }}" | cut -c1-7)
+            FULL_SHA="${{ github.event.workflow_run.head_sha }}"
           fi
-          echo "tag=${{ env.REGISTRY_IMAGE }}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          SHORT_SHA=$(echo "$FULL_SHA" | cut -c1-7)
+          echo "full=$FULL_SHA" >> "$GITHUB_OUTPUT"
+          echo "short=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "image=${REGISTRY_IMAGE}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      # Check out the commit that was actually built so the compose file
+      # we ship matches the image version we're about to deploy.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.sha.outputs.full }}
 
       - name: Setup SSH key
         run: |
@@ -44,20 +55,16 @@ jobs:
 
       - name: Deploy
         env:
-          IMAGE: ${{ steps.image.outputs.tag }}
+          IMAGE: ${{ steps.sha.outputs.image }}
         run: |
-          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_SERVER }} "
-            cd /srv/ow-course-designer
-            mkdir -p /var/lib/ow-course-designer/flyovers
-            mkdir -p /var/log/ow-course-designer
-            podman pull ${IMAGE}
-            # Retag locally so the compose file (which pins :latest) picks up the exact build
-            podman tag ${IMAGE} ${{ env.REGISTRY_IMAGE }}:latest
-            podman stop ow-course-designer 2>/dev/null || true
-            podman rm ow-course-designer 2>/dev/null || true
-            podman compose -f docker-compose.prod.yml up -d --remove-orphans
-            podman image prune -f
-          "
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_SERVER }} \
+            "set -euo pipefail; \
+             cd /srv/ow-course-designer && \
+             mkdir -p /var/lib/ow-course-designer/flyovers /var/log/ow-course-designer && \
+             podman pull '${IMAGE}' && \
+             podman tag '${IMAGE}' '${{ env.REGISTRY_IMAGE }}:latest' && \
+             OW_IMAGE='${IMAGE}' podman compose -f docker-compose.prod.yml up -d --force-recreate --remove-orphans && \
+             podman image prune -f"
 
       - name: Cleanup SSH key
         if: always()
