@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { encodeCourseData } from "@/lib/course-encoder";
 import { CourseData } from "@/store/courseStore";
 import { withSpan } from "@/lib/otel/with-span";
+import { logger } from "@/lib/logger";
 
 function generateShortCode(): string {
   return crypto.randomBytes(5).toString("base64url").slice(0, 7);
@@ -81,7 +82,7 @@ export async function POST(
         shortUrl: `${appUrl}/s/${snapshot.shortCode}`,
       });
     } catch (err) {
-      console.error("[share] Failed to create snapshot:", err);
+      logger.error({ err, courseId }, "[share] Failed to create snapshot");
       const message = err instanceof Error ? err.message : "Unknown error";
       // If it's a Prisma error about missing column, it's likely a migration issue
       if (message.includes("flyoverUrl") || message.includes("column")) {

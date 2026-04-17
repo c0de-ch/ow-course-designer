@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { sendAdminNewUserNotification } from "@/lib/mail";
 import { checkRateLimit, getRequestIp } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 const verifySchema = z.object({
   email: z.string().email(),
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
 
     // Send admin notification (non-blocking)
     sendAdminNewUserNotification(user.name, user.email).catch((err) =>
-      console.error("Failed to send admin notification:", err)
+      logger.error({ err }, "Failed to send admin notification")
     );
 
     return NextResponse.json({ message: "Email verified", verified: true });
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors }, { status: 400 });
     }
-    console.error("Verification error:", err);
+    logger.error({ err }, "Verification error");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

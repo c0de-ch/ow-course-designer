@@ -39,6 +39,15 @@ jest.mock("bcryptjs", () => ({
   compare: jest.fn().mockResolvedValue(true),
 }));
 
+jest.mock("@/lib/logger", () => ({
+  logger: {
+    error: jest.fn(),
+    warn: jest.fn(),
+    info: jest.fn(),
+    debug: jest.fn(),
+  },
+}));
+
 // ---------------------------------------------------------------------------
 // Imports — after mocks
 // ---------------------------------------------------------------------------
@@ -54,6 +63,7 @@ import {
   sendPasswordResetCode,
   sendAdminNewUserNotification,
 } from "@/lib/mail";
+import { logger } from "@/lib/logger";
 
 // Cast to jest mocks for type safety
 const mockPrisma = prisma as unknown as {
@@ -147,22 +157,16 @@ describe("POST /api/register", () => {
       new Error("connect ECONNREFUSED ::1:587")
     );
 
-    const consoleSpy = jest
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-
     const res = await registerPOST(makeRequest(validBody));
     const body = await res.json();
 
     expect(res.status).toBe(201);
     expect(body.emailSent).toBe(false);
     expect(body.email).toBe("test@example.com");
-    expect(consoleSpy).toHaveBeenCalledWith(
-      "Failed to send verification email:",
-      expect.any(Error)
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.any(Error) }),
+      "Failed to send verification email"
     );
-
-    consoleSpy.mockRestore();
   });
 
   it("returns 409 when email is already verified", async () => {
@@ -405,10 +409,6 @@ describe("POST /api/resend-code", () => {
       new Error("connect ECONNREFUSED ::1:587")
     );
 
-    const consoleSpy = jest
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-
     const res = await resendPOST(
       makeRequest({ email: "test@example.com" })
     );
@@ -416,8 +416,6 @@ describe("POST /api/resend-code", () => {
 
     expect(res.status).toBe(502);
     expect(body.error).toContain("Failed to send email");
-
-    consoleSpy.mockRestore();
   });
 
   it("returns 429 when rate limited (code sent within 60s)", async () => {

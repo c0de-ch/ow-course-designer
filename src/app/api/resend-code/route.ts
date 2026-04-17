@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { sendVerificationCode } from "@/lib/mail";
 import { checkRateLimit, getRequestIp } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 function generateCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
     try {
       await sendVerificationCode(email, code);
     } catch (mailErr) {
-      console.error("Failed to send verification email:", mailErr);
+      logger.error({ err: mailErr, email }, "Failed to send verification email");
       return NextResponse.json(
         { error: "Failed to send email. Please try again later." },
         { status: 502 }
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors }, { status: 400 });
     }
-    console.error("Resend code error:", err);
+    logger.error({ err }, "Resend code error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
