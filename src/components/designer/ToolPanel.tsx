@@ -58,25 +58,34 @@ export function ToolPanel() {
     useCourseStore();
 
   return (
-    <div className="flex flex-col gap-1.5 p-3">
-      <p className="text-sm font-bold text-base-content/70 uppercase tracking-wide px-2 py-1">
+    <div className="flex flex-col gap-1.5 p-3" role="toolbar" aria-label="Course design tools">
+      <p className="text-sm font-bold text-base-content/70 uppercase tracking-wide px-2 py-1" id="tools-heading">
         Tools
       </p>
-      {TOOLS.map((tool) => (
-        <button
-          key={tool.id}
-          onClick={() => setActiveTool(tool.id)}
-          title={tool.description}
-          className={`btn justify-start gap-3 font-normal transition-all duration-150 ${
-            activeTool === tool.id
-              ? "btn-primary shadow-md ring-2 ring-primary/30"
-              : "btn-ghost"
-          }`}
-        >
-          <span className="w-6 flex items-center justify-center">{tool.icon}</span>
-          <span>{tool.label}</span>
-        </button>
-      ))}
+      <div role="radiogroup" aria-labelledby="tools-heading" className="flex flex-col gap-1.5">
+        {TOOLS.map((tool) => {
+          const isActive = activeTool === tool.id;
+          return (
+            <button
+              key={tool.id}
+              onClick={() => setActiveTool(tool.id)}
+              title={tool.description}
+              aria-label={`${tool.label} tool: ${tool.description}`}
+              aria-pressed={isActive}
+              role="radio"
+              aria-checked={isActive}
+              className={`btn justify-start gap-3 font-normal transition-all duration-150 ${
+                isActive
+                  ? "btn-primary shadow-md ring-2 ring-primary/30"
+                  : "btn-ghost"
+              }`}
+            >
+              <span className="w-6 flex items-center justify-center" aria-hidden="true">{tool.icon}</span>
+              <span>{tool.label}</span>
+            </button>
+          );
+        })}
+      </div>
 
       {selectedElementId && (
         <>
@@ -85,9 +94,10 @@ export function ToolPanel() {
             onClick={() => {
               removeElement(selectedElementId);
             }}
+            aria-label="Delete selected element"
             className="btn btn-error btn-outline justify-start gap-3 transition-all duration-150"
           >
-            <span className="text-lg w-6 text-center">🗑</span>
+            <span className="text-lg w-6 text-center" aria-hidden="true">🗑</span>
             <span>Delete selected</span>
           </button>
         </>
