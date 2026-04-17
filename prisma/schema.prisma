@@ -22,6 +22,7 @@ model User {
   accounts               Account[]
   sessions               Session[]
   emailVerificationCodes EmailVerificationCode[]
+  passwordResetCodes     PasswordResetCode[]
 }
 
 model Account {
@@ -68,6 +69,18 @@ model EmailVerificationCode {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PasswordResetCode {
+  id        String   @id @default(cuid())
+  userId    String
+  code      String
+  expires   DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Course {

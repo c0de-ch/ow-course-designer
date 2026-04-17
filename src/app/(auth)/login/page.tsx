@@ -122,6 +122,12 @@ function LoginForm() {
             >
               {isSubmitting ? "Signing in..." : "Sign in"}
             </button>
+
+            <p className="text-center text-sm">
+              <Link href="/forgot-password" className="link link-primary">
+                Forgot password?
+              </Link>
+            </p>
           </form>
 
           <button
