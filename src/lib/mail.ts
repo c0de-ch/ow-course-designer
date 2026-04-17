@@ -37,6 +37,28 @@ export async function sendVerificationCode(
   });
 }
 
+export async function sendPasswordResetCode(
+  to: string,
+  code: string
+): Promise<void> {
+  const transport = getTransport();
+  await transport.sendMail({
+    from: fromAddress,
+    to,
+    subject: "Your password reset code — OW Course Designer",
+    text: `Your password reset code is: ${code}\n\nThis code expires in 15 minutes.\n\nIf you did not request this, ignore this email — your password will not change.`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+        <h2 style="margin:0 0 16px">Reset your password</h2>
+        <p>Your password reset code is:</p>
+        <div style="font-size:32px;font-weight:bold;letter-spacing:8px;text-align:center;padding:16px;background:#f3f4f6;border-radius:8px;margin:16px 0">${code}</div>
+        <p style="color:#6b7280;font-size:14px">This code expires in 15 minutes.</p>
+        <p style="color:#6b7280;font-size:14px">If you did not request this, ignore this email — your password will not change.</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendAdminNewUserNotification(
   userName: string | null,
   userEmail: string

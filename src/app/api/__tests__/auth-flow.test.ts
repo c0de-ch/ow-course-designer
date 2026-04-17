@@ -9,6 +9,7 @@ import { NextRequest } from "next/server";
 
 jest.mock("@/lib/mail", () => ({
   sendVerificationCode: jest.fn().mockResolvedValue(undefined),
+  sendPasswordResetCode: jest.fn().mockResolvedValue(undefined),
   sendAdminNewUserNotification: jest.fn().mockResolvedValue(undefined),
 }));
 
@@ -20,6 +21,11 @@ jest.mock("@/lib/prisma", () => ({
       update: jest.fn(),
     },
     emailVerificationCode: {
+      findFirst: jest.fn(),
+      create: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    passwordResetCode: {
       findFirst: jest.fn(),
       create: jest.fn(),
       deleteMany: jest.fn(),
@@ -39,10 +45,13 @@ jest.mock("bcryptjs", () => ({
 import { POST as registerPOST } from "../register/route";
 import { POST as verifyPOST } from "../verify-email/route";
 import { POST as resendPOST } from "../resend-code/route";
+import { POST as forgotPOST } from "../forgot-password/route";
+import { POST as resetPOST } from "../reset-password/route";
 import { prisma } from "@/lib/prisma";
 import { _resetRateLimitsForTests } from "@/lib/rate-limit";
 import {
   sendVerificationCode,
+  sendPasswordResetCode,
   sendAdminNewUserNotification,
 } from "@/lib/mail";
 
@@ -54,9 +63,15 @@ const mockPrisma = prisma as unknown as {
     create: jest.Mock;
     deleteMany: jest.Mock;
   };
+  passwordResetCode: {
+    findFirst: jest.Mock;
+    create: jest.Mock;
+    deleteMany: jest.Mock;
+  };
   $transaction: jest.Mock;
 };
 const mockSendVerificationCode = sendVerificationCode as jest.Mock;
+const mockSendPasswordResetCode = sendPasswordResetCode as jest.Mock;
 const mockSendAdminNotification = sendAdminNewUserNotification as jest.Mock;
 
 // ---------------------------------------------------------------------------
@@ -458,6 +473,193 @@ describe("POST /api/resend-code", () => {
 
   it("returns 400 for invalid email format", async () => {
     const res = await resendPOST(makeRequest({ email: "not-an-email" }));
+    expect(res.status).toBe(400);
+  });
+});
+
+// ===========================================================================
+// POST /api/forgot-password
+// ===========================================================================
+describe("POST /api/forgot-password", () => {
+  it("issues a code and emails the user when account exists", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      email: "test@example.com",
+      passwordHash: "$2a$12$existing",
+    });
+    mockPrisma.passwordResetCode.findFirst.mockResolvedValue(null);
+    mockPrisma.passwordResetCode.deleteMany.mockResolvedValue({ count: 0 });
+    mockPrisma.passwordResetCode.create.mockResolvedValue({ id: "reset-1" });
+
+    const res = await forgotPOST(
+      makeRequest({ email: "test@example.com" })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.message).toContain("If an account");
+    expect(mockPrisma.passwordResetCode.create).toHaveBeenCalledTimes(1);
+    expect(mockSendPasswordResetCode).toHaveBeenCalledWith(
+      "test@example.com",
+      expect.stringMatching(/^\d{6}$/)
+    );
+  });
+
+  it("does not reveal whether user exists (no user)", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+
+    const res = await forgotPOST(
+      makeRequest({ email: "nobody@example.com" })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.message).toContain("If an account");
+    expect(mockPrisma.passwordResetCode.create).not.toHaveBeenCalled();
+    expect(mockSendPasswordResetCode).not.toHaveBeenCalled();
+  });
+
+  it("does not issue a code for OAuth-only accounts", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: "user-2",
+      email: "google-user@example.com",
+      passwordHash: null,
+    });
+
+    const res = await forgotPOST(
+      makeRequest({ email: "google-user@example.com" })
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockPrisma.passwordResetCode.create).not.toHaveBeenCalled();
+    expect(mockSendPasswordResetCode).not.toHaveBeenCalled();
+  });
+
+  it("throttles: if a code was issued in last 60s, does not issue another", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      email: "test@example.com",
+      passwordHash: "$2a$12$existing",
+    });
+    mockPrisma.passwordResetCode.findFirst.mockResolvedValue({
+      id: "recent",
+      createdAt: new Date(),
+    });
+
+    const res = await forgotPOST(
+      makeRequest({ email: "test@example.com" })
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockPrisma.passwordResetCode.create).not.toHaveBeenCalled();
+    expect(mockSendPasswordResetCode).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for invalid email format", async () => {
+    const res = await forgotPOST(makeRequest({ email: "not-an-email" }));
+    expect(res.status).toBe(400);
+  });
+});
+
+// ===========================================================================
+// POST /api/reset-password
+// ===========================================================================
+describe("POST /api/reset-password", () => {
+  const validBody = {
+    email: "test@example.com",
+    code: "123456",
+    password: "newsecurepass123",
+  };
+
+  it("resets password with valid code, hashes new password, deletes codes", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      email: "test@example.com",
+      emailVerified: new Date("2026-01-01"),
+    });
+    mockPrisma.passwordResetCode.findFirst.mockResolvedValue({
+      id: "reset-1",
+      userId: "user-1",
+      code: "123456",
+      expires: new Date(Date.now() + 10 * 60 * 1000),
+    });
+    mockPrisma.$transaction.mockResolvedValue([{}, {}]);
+
+    const res = await resetPOST(makeRequest(validBody));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.reset).toBe(true);
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks email verified if it wasn't already", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      email: "test@example.com",
+      emailVerified: null,
+    });
+    mockPrisma.passwordResetCode.findFirst.mockResolvedValue({
+      id: "reset-1",
+      userId: "user-1",
+      code: "123456",
+      expires: new Date(Date.now() + 10 * 60 * 1000),
+    });
+    mockPrisma.$transaction.mockImplementation(async (ops) => ops);
+
+    const res = await resetPOST(makeRequest(validBody));
+    expect(res.status).toBe(200);
+    // The update call is the first op passed to $transaction
+    const updateCall = mockPrisma.user.update.mock.calls[0]?.[0];
+    expect(updateCall.data.emailVerified).toBeInstanceOf(Date);
+  });
+
+  it("returns 400 for unknown email", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+
+    const res = await resetPOST(makeRequest(validBody));
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.error).toContain("Invalid");
+  });
+
+  it("returns 400 for wrong code", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      email: "test@example.com",
+    });
+    mockPrisma.passwordResetCode.findFirst.mockResolvedValue(null);
+
+    const res = await resetPOST(makeRequest(validBody));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for expired code", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      email: "test@example.com",
+    });
+    mockPrisma.passwordResetCode.findFirst.mockResolvedValue({
+      id: "reset-1",
+      userId: "user-1",
+      code: "123456",
+      expires: new Date(Date.now() - 1000),
+    });
+
+    const res = await resetPOST(makeRequest(validBody));
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.error).toContain("expired");
+  });
+
+  it("returns 400 for short password", async () => {
+    const res = await resetPOST(
+      makeRequest({
+        email: "test@example.com",
+        code: "123456",
+        password: "short",
+      })
+    );
     expect(res.status).toBe(400);
   });
 });
