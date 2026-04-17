@@ -27,7 +27,6 @@ beforeAll(() => {
     writable: true,
     value: {
       maps: {
-        // Never resolves → services are never constructed
         importLibrary: jest.fn(() => new Promise(() => {})),
       },
     },
@@ -38,25 +37,16 @@ beforeEach(() => {
   mockSetCenter.mockClear();
   mockSetZoom.mockClear();
   mockMap = freshMockMap();
-  // Reset store to clean state before each test
   act(() => {
     useCourseStore.getState().resetCourse();
   });
 });
 
-// ---------------------------------------------------------------------------
-// Helper — set lakeLatLng in the store (simulates loading a course)
-// ---------------------------------------------------------------------------
-function setLakeLatLng(value: string | null) {
-  act(() => {
-    const cd = useCourseStore.getState().courseData;
-    useCourseStore.getState().setCourseData({ ...cd, lakeLatLng: value });
-  });
+// Click the collapsed search icon to reveal the input.
+async function expand() {
+  await userEvent.click(screen.getByTitle("Search for a lake or region"));
 }
 
-// ===========================================================================
-// parseLakeLatLng — pure function tests
-// ===========================================================================
 describe("parseLakeLatLng", () => {
   it("parses a valid lat,lng string", () => {
     expect(parseLakeLatLng("46.8182,8.2275")).toEqual({
@@ -104,116 +94,71 @@ describe("parseLakeLatLng", () => {
   });
 });
 
-// ===========================================================================
-// LakeSearch component — button disabled/enabled state
-// ===========================================================================
-describe("LakeSearch center button", () => {
-  it("is disabled when map is null and lakeLatLng is null", () => {
-    render(<LakeSearch map={null} />);
-    expect(screen.getByTitle("Center map on lake")).toBeDisabled();
-  });
-
-  it("is disabled when map is provided but lakeLatLng is null", () => {
+describe("LakeSearch collapsed state", () => {
+  it("renders only the search icon button before expansion", () => {
     render(<LakeSearch map={mockMap} />);
-    expect(screen.getByTitle("Center map on lake")).toBeDisabled();
+    expect(
+      screen.getByTitle("Search for a lake or region")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("Search for a lake or region...")
+    ).not.toBeInTheDocument();
   });
 
-  it("is disabled when lakeLatLng is set but map is null", () => {
-    setLakeLatLng("46.8182,8.2275");
-    render(<LakeSearch map={null} />);
-    expect(screen.getByTitle("Center map on lake")).toBeDisabled();
-  });
-
-  it("is enabled when both map and lakeLatLng are set", () => {
-    setLakeLatLng("46.8182,8.2275");
+  it("expands to show the input when clicked", async () => {
     render(<LakeSearch map={mockMap} />);
-    expect(screen.getByTitle("Center map on lake")).toBeEnabled();
-  });
-
-  it("becomes enabled when lakeLatLng is set after initial render", () => {
-    const { rerender } = render(<LakeSearch map={mockMap} />);
-    expect(screen.getByTitle("Center map on lake")).toBeDisabled();
-
-    // Simulate a lake being selected
-    setLakeLatLng("46.8182,8.2275");
-    rerender(<LakeSearch map={mockMap} />);
-
-    expect(screen.getByTitle("Center map on lake")).toBeEnabled();
+    await expand();
+    expect(
+      screen.getByPlaceholderText("Search for a lake or region...")
+    ).toBeInTheDocument();
   });
 });
 
-// ===========================================================================
-// LakeSearch component — click centres the map
-// ===========================================================================
-describe("LakeSearch center button click", () => {
-  it("calls map.setCenter with parsed coordinates", async () => {
-    setLakeLatLng("46.8182,8.2275");
+describe("LakeSearch search input", () => {
+  it("search button is disabled when input is empty", async () => {
     render(<LakeSearch map={mockMap} />);
-
-    await userEvent.click(screen.getByTitle("Center map on lake"));
-
-    expect(mockSetCenter).toHaveBeenCalledTimes(1);
-    expect(mockSetCenter).toHaveBeenCalledWith({ lat: 46.8182, lng: 8.2275 });
+    await expand();
+    expect(screen.getByTitle("Search")).toBeDisabled();
   });
 
-  it("calls map.setZoom(14)", async () => {
-    setLakeLatLng("46.8182,8.2275");
+  it("search button is enabled when input has text", async () => {
     render(<LakeSearch map={mockMap} />);
-
-    await userEvent.click(screen.getByTitle("Center map on lake"));
-
-    expect(mockSetZoom).toHaveBeenCalledTimes(1);
-    expect(mockSetZoom).toHaveBeenCalledWith(14);
+    await expand();
+    await userEvent.type(
+      screen.getByPlaceholderText("Search for a lake or region..."),
+      "Tenero"
+    );
+    expect(screen.getByTitle("Search")).toBeEnabled();
   });
 
-  it("calls setCenter before setZoom (deterministic order)", async () => {
-    const callOrder: string[] = [];
-    mockSetCenter.mockImplementation(() => callOrder.push("setCenter"));
-    mockSetZoom.mockImplementation(() => callOrder.push("setZoom"));
-
-    setLakeLatLng("46.8182,8.2275");
+  it("pre-populates from stored lakeLabel", async () => {
+    act(() => {
+      const cd = useCourseStore.getState().courseData;
+      useCourseStore.getState().setCourseData({
+        ...cd,
+        lakeLabel: "Lake Zurich",
+      });
+    });
     render(<LakeSearch map={mockMap} />);
-
-    await userEvent.click(screen.getByTitle("Center map on lake"));
-
-    expect(callOrder).toEqual(["setCenter", "setZoom"]);
+    await expand();
+    expect(
+      screen.getByPlaceholderText("Search for a lake or region...")
+    ).toHaveValue("Lake Zurich");
   });
 
-  it("does not call map methods when lakeLatLng is unparseable", async () => {
-    // "bad,data" is truthy so the button is enabled, but parseLakeLatLng
-    // returns null and the handler returns early.
-    setLakeLatLng("bad,data");
+  it("Enter with no services does not crash", async () => {
     render(<LakeSearch map={mockMap} />);
-
-    await userEvent.click(screen.getByTitle("Center map on lake"));
-
+    await expand();
+    const input = screen.getByPlaceholderText(
+      "Search for a lake or region..."
+    );
+    await userEvent.type(input, "Tenero");
+    await userEvent.keyboard("{Enter}");
     expect(mockSetCenter).not.toHaveBeenCalled();
     expect(mockSetZoom).not.toHaveBeenCalled();
   });
-
-  it("reads lakeLatLng from the store at click time, not render time", async () => {
-    // Start with one lake
-    setLakeLatLng("46.8182,8.2275");
-    render(<LakeSearch map={mockMap} />);
-
-    // Update the store to a different lake before clicking
-    act(() => {
-      const cd = useCourseStore.getState().courseData;
-      useCourseStore.setState({
-        courseData: { ...cd, lakeLatLng: "47.0,9.0" },
-      });
-    });
-
-    await userEvent.click(screen.getByTitle("Center map on lake"));
-
-    // Should use the latest store value (47.0, 9.0), not the render-time one
-    expect(mockSetCenter).toHaveBeenCalledWith({ lat: 47.0, lng: 9.0 });
-  });
 });
 
-// ===========================================================================
-// LakeSearch — lake selection marks the store dirty so it auto-saves
-// ===========================================================================
 describe("LakeSearch dirty-flag on lake selection", () => {
   it("setCourseData alone sets isDirty to false", () => {
     act(() => {
@@ -223,7 +168,6 @@ describe("LakeSearch dirty-flag on lake selection", () => {
         lakeLatLng: "46.8182,8.2275",
       });
     });
-    // setCourseData is designed for loading from server — isDirty must be false
     expect(useCourseStore.getState().isDirty).toBe(false);
   });
 
@@ -240,57 +184,5 @@ describe("LakeSearch dirty-flag on lake selection", () => {
     expect(useCourseStore.getState().courseData.lakeLatLng).toBe(
       "46.8182,8.2275"
     );
-  });
-});
-
-// ===========================================================================
-// LakeSearch — search input
-// ===========================================================================
-describe("LakeSearch search input", () => {
-  it("renders with placeholder text", () => {
-    render(<LakeSearch map={mockMap} />);
-    expect(
-      screen.getByPlaceholderText("Search for a lake or region...")
-    ).toBeInTheDocument();
-  });
-
-  it("search button is disabled when input is empty", () => {
-    render(<LakeSearch map={mockMap} />);
-    expect(screen.getByTitle("Search")).toBeDisabled();
-  });
-
-  it("search button is enabled when input has text", async () => {
-    render(<LakeSearch map={mockMap} />);
-    await userEvent.type(
-      screen.getByPlaceholderText("Search for a lake or region..."),
-      "Tenero"
-    );
-    expect(screen.getByTitle("Search")).toBeEnabled();
-  });
-
-  it("pre-populates from stored lakeLabel", () => {
-    act(() => {
-      const cd = useCourseStore.getState().courseData;
-      useCourseStore.getState().setCourseData({
-        ...cd,
-        lakeLabel: "Lake Zurich",
-      });
-    });
-    render(<LakeSearch map={mockMap} />);
-    expect(
-      screen.getByPlaceholderText("Search for a lake or region...")
-    ).toHaveValue("Lake Zurich");
-  });
-
-  it("Enter with no services does not crash", async () => {
-    render(<LakeSearch map={mockMap} />);
-    const input = screen.getByPlaceholderText(
-      "Search for a lake or region..."
-    );
-    await userEvent.type(input, "Tenero");
-    await userEvent.keyboard("{Enter}");
-    // No error thrown, no map methods called
-    expect(mockSetCenter).not.toHaveBeenCalled();
-    expect(mockSetZoom).not.toHaveBeenCalled();
   });
 });
