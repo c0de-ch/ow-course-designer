@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { sendVerificationCode } from "@/lib/mail";
 import { checkRateLimit, getRequestIp } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 function generateCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
       await sendVerificationCode(email, code);
     } catch (mailErr) {
       emailSent = false;
-      console.error("Failed to send verification email:", mailErr);
+      logger.error({ err: mailErr, email }, "Failed to send verification email");
     }
 
     return NextResponse.json(
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors }, { status: 400 });
     }
-    console.error("Registration error:", err);
+    logger.error({ err }, "Registration error");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

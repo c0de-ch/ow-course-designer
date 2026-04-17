@@ -3,6 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, getRequestIp } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 const schema = z.object({
   email: z.string().email(),
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors }, { status: 400 });
     }
-    console.error("Reset-password error:", err);
+    logger.error({ err }, "Reset-password error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
