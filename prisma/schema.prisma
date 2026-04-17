@@ -87,6 +87,8 @@ model Course {
   user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   elements  CourseElement[]
   snapshots CourseSnapshot[]
+
+  @@index([userId, updatedAt(sort: Desc)])
 }
 
 model CourseElement {
@@ -100,6 +102,8 @@ model CourseElement {
   metadata String?
 
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, order])
 }
 
 model CourseSnapshot {
@@ -112,4 +116,6 @@ model CourseSnapshot {
   createdAt  DateTime @default(now())
 
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId])
 }
