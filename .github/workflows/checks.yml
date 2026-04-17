@@ -1,0 +1,45 @@
+name: Checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npx jest --ci --reporters=default
+
+      - name: Next.js build
+        run: yarn build
+        env:
+          # next/font fetches during build — provide a dummy key to avoid hard fails
+          NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ci-dummy
+          NEXTAUTH_SECRET: ci-dummy
+          NEXTAUTH_URL: http://localhost:3000
+          DATABASE_URL: file:./ci.db
