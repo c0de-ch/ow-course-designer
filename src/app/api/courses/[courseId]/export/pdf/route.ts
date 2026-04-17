@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { encodeCourseData } from "@/lib/course-encoder";
-import { launchBrowser } from "@/lib/puppeteer";
+import { withBrowser, ExportQueueTimeoutError } from "@/lib/puppeteer";
 import { CourseData } from "@/store/courseStore";
 import { tracer } from "@/lib/otel/tracer";
 import { exportDurationHistogram, exportsSuccessCounter, exportsFailureCounter } from "@/lib/otel/metrics";
@@ -62,38 +62,32 @@ export async function GET(
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
       const printUrl = `${appUrl}/share/${snapshot.token}?print=1`;
 
-      const browser = await launchBrowser();
-
-      try {
+      const pdf = await withBrowser(async (browser) => {
         const page = await browser.newPage();
         await page.setViewport({ width: 1280, height: 900 });
         await page.goto(printUrl, { waitUntil: "networkidle0", timeout: 30000 });
         await page.waitForSelector("#map-ready", { timeout: 20000 });
+        return page.pdf({ format: "A4", landscape: true, printBackground: true });
+      });
 
-        const pdf = await page.pdf({
-          format: "A4",
-          landscape: true,
-          printBackground: true,
-        });
+      exportDurationHistogram.record(Date.now() - start, { format: "pdf" });
+      exportsSuccessCounter.add(1, { format: "pdf" });
+      span.setStatus({ code: 0 });
 
-        exportDurationHistogram.record(Date.now() - start, { format: "pdf" });
-        exportsSuccessCounter.add(1, { format: "pdf" });
-        span.setStatus({ code: 0 });
-
-        const filename = `${course.name.replace(/[^a-z0-9]/gi, "_")}.pdf`;
-        return new NextResponse(Buffer.from(pdf), {
-          headers: {
-            "Content-Type": "application/pdf",
-            "Content-Disposition": `attachment; filename="${filename}"`,
-          },
-        });
-      } finally {
-        await browser.close();
-      }
+      const filename = `${course.name.replace(/[^a-z0-9]/gi, "_")}.pdf`;
+      return new NextResponse(Buffer.from(pdf), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+        },
+      });
     } catch (err) {
       exportsFailureCounter.add(1, { format: "pdf" });
       span.recordException(err as Error);
       span.setStatus({ code: 2, message: (err as Error).message });
+      if (err instanceof ExportQueueTimeoutError) {
+        return new NextResponse("Export server busy, please retry", { status: 503 });
+      }
       throw err;
     } finally {
       span.end();

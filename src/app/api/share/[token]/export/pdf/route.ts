@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { decodeCourseData } from "@/lib/course-encoder";
-import { launchBrowser } from "@/lib/puppeteer";
+import { withBrowser, ExportQueueTimeoutError } from "@/lib/puppeteer";
 
 export async function GET(
   _req: NextRequest,
@@ -20,18 +20,13 @@ export async function GET(
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const printUrl = `${appUrl}/share/${token}?print=1`;
 
-  const browser = await launchBrowser();
-
   try {
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 900 });
-    await page.goto(printUrl, { waitUntil: "networkidle0", timeout: 30000 });
-    await page.waitForSelector("#map-ready", { timeout: 20000 });
-
-    const pdf = await page.pdf({
-      format: "A4",
-      landscape: true,
-      printBackground: true,
+    const pdf = await withBrowser(async (browser) => {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 900 });
+      await page.goto(printUrl, { waitUntil: "networkidle0", timeout: 30000 });
+      await page.waitForSelector("#map-ready", { timeout: 20000 });
+      return page.pdf({ format: "A4", landscape: true, printBackground: true });
     });
 
     const filename = `${courseData.name.replace(/[^a-z0-9]/gi, "_")}.pdf`;
@@ -41,7 +36,10 @@ export async function GET(
         "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
-  } finally {
-    await browser.close();
+  } catch (err) {
+    if (err instanceof ExportQueueTimeoutError) {
+      return new NextResponse("Export server busy, please retry", { status: 503 });
+    }
+    throw err;
   }
 }

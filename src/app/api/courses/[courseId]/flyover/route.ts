@@ -4,6 +4,9 @@ import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { randomUUID } from "crypto";
 
+const MAX_FLYOVER_BYTES = 100 * 1024 * 1024;
+const ALLOWED_MIME = new Set(["video/webm", "video/mp4"]);
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ courseId: string }> }
@@ -19,6 +22,20 @@ export async function POST(
   const video = formData.get("video") as File | null;
   if (!video) {
     return NextResponse.json({ error: "No video provided" }, { status: 400 });
+  }
+
+  if (!ALLOWED_MIME.has(video.type)) {
+    return NextResponse.json(
+      { error: `Unsupported video type: ${video.type}` },
+      { status: 415 }
+    );
+  }
+
+  if (video.size > MAX_FLYOVER_BYTES) {
+    return NextResponse.json(
+      { error: `Video exceeds ${MAX_FLYOVER_BYTES / 1024 / 1024}MB limit` },
+      { status: 413 }
+    );
   }
 
   const buffer = Buffer.from(await video.arrayBuffer());
