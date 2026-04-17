@@ -54,7 +54,27 @@ function buildCsp(nonce: string): string {
     .join("; ");
 }
 
+// Paths that require a signed-in user. Mirror the list in auth.ts's
+// authorized() callback — the wrapped `auth(fn)` form below bypasses that
+// callback, so we check here instead.
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/designer",
+  "/settings",
+  "/api/courses",
+  "/api/account",
+];
+
 export default auth((req) => {
+  const pathname = req.nextUrl.pathname;
+  const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
+
+  if (isProtected && !req.auth) {
+    const signInUrl = new URL("/login", req.nextUrl.origin);
+    signInUrl.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(signInUrl);
+  }
+
   const nonce = crypto.randomUUID().replace(/-/g, "");
   const csp = buildCsp(nonce);
 
