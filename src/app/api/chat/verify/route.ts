@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkRateLimit, getRequestIp } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
+  const ip = getRequestIp(req.headers);
+  const rate = checkRateLimit(`chat-verify:${ip}`, 20, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { ok: false, error: "Too many verification attempts." },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+    );
+  }
+
   const { provider, claudeApiKey, claudeModel, ollamaServerUrl, ollamaModel } =
     await req.json();
 

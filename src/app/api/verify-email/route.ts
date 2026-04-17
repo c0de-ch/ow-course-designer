@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { sendAdminNewUserNotification } from "@/lib/mail";
+import { checkRateLimit, getRequestIp } from "@/lib/rate-limit";
 
 const verifySchema = z.object({
   email: z.string().email(),
@@ -9,6 +10,16 @@ const verifySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const ip = getRequestIp(req.headers);
+  // 10 attempts per IP per 10 minutes — thwarts brute-forcing the 6-digit code.
+  const rate = checkRateLimit(`verify-email:${ip}`, 10, 10 * 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "Too many attempts. Try again later." },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+    );
+  }
+
   try {
     const body = await req.json();
     const { email, code } = verifySchema.parse(body);
