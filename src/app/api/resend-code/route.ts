@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { sendVerificationCode } from "@/lib/mail";
+import { checkRateLimit, getRequestIp } from "@/lib/rate-limit";
 
 function generateCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -12,6 +13,15 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const ip = getRequestIp(req.headers);
+  const rate = checkRateLimit(`resend:${ip}`, 10, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again later." },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+    );
+  }
+
   try {
     const body = await req.json();
     const { email } = schema.parse(body);
