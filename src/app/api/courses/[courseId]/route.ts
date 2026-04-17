@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
-import { tracer } from "@/lib/otel/tracer";
+import { withSpan } from "@/lib/otel/with-span";
 
 async function getCourseForUser(courseId: string, userId: string) {
   return prisma.course.findFirst({
@@ -17,20 +17,22 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ courseId: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  return withSpan("GET /api/courses/[courseId]", async () => {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const userId = (session.user as { id: string }).id;
-  const { courseId } = await params;
-  const course = await getCourseForUser(courseId, userId);
+    const userId = (session.user as { id: string }).id;
+    const { courseId } = await params;
+    const course = await getCourseForUser(courseId, userId);
 
-  if (!course) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+    if (!course) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
-  return NextResponse.json(course);
+    return NextResponse.json(course);
+  });
 }
 
 const elementSchema = z.object({
@@ -59,83 +61,87 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ courseId: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  return withSpan("PUT /api/courses/[courseId]", async () => {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const userId = (session.user as { id: string }).id;
-  const { courseId } = await params;
-  const existing = await getCourseForUser(courseId, userId);
+    const userId = (session.user as { id: string }).id;
+    const { courseId } = await params;
+    const existing = await getCourseForUser(courseId, userId);
 
-  if (!existing) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+    if (!existing) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
-  try {
-    const body = await req.json();
-    const data = putSchema.parse(body);
+    try {
+      const body = await req.json();
+      const data = putSchema.parse(body);
 
-    await prisma.$transaction(async (tx) => {
-      await tx.course.update({
-        where: { id: courseId },
-        data: {
-          ...(data.name !== undefined && { name: data.name }),
-          ...(data.lakeLabel !== undefined && { lakeLabel: data.lakeLabel }),
-          ...(data.lakeLatLng !== undefined && { lakeLatLng: data.lakeLatLng }),
-          ...(data.zoomLevel !== undefined && { zoomLevel: data.zoomLevel }),
-          ...(data.distanceKm !== undefined && { distanceKm: data.distanceKm }),
-          ...(data.laps !== undefined && { laps: data.laps }),
-          ...(data.raceLabel !== undefined && { raceLabel: data.raceLabel }),
-          ...(data.raceLogo !== undefined && { raceLogo: data.raceLogo }),
-        },
+      await prisma.$transaction(async (tx) => {
+        await tx.course.update({
+          where: { id: courseId },
+          data: {
+            ...(data.name !== undefined && { name: data.name }),
+            ...(data.lakeLabel !== undefined && { lakeLabel: data.lakeLabel }),
+            ...(data.lakeLatLng !== undefined && { lakeLatLng: data.lakeLatLng }),
+            ...(data.zoomLevel !== undefined && { zoomLevel: data.zoomLevel }),
+            ...(data.distanceKm !== undefined && { distanceKm: data.distanceKm }),
+            ...(data.laps !== undefined && { laps: data.laps }),
+            ...(data.raceLabel !== undefined && { raceLabel: data.raceLabel }),
+            ...(data.raceLogo !== undefined && { raceLogo: data.raceLogo }),
+          },
+        });
+
+        if (data.elements !== undefined) {
+          await tx.courseElement.deleteMany({ where: { courseId } });
+          if (data.elements.length > 0) {
+            await tx.courseElement.createMany({
+              data: data.elements.map((el) => ({
+                courseId,
+                type: el.type,
+                lat: el.lat,
+                lng: el.lng,
+                order: el.order,
+                label: el.label ?? null,
+                metadata: el.metadata ?? null,
+              })),
+            });
+          }
+        }
       });
 
-      if (data.elements !== undefined) {
-        await tx.courseElement.deleteMany({ where: { courseId } });
-        if (data.elements.length > 0) {
-          await tx.courseElement.createMany({
-            data: data.elements.map((el) => ({
-              courseId,
-              type: el.type,
-              lat: el.lat,
-              lng: el.lng,
-              order: el.order,
-              label: el.label ?? null,
-              metadata: el.metadata ?? null,
-            })),
-          });
-        }
+      const updated = await getCourseForUser(courseId, userId);
+      return NextResponse.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return NextResponse.json({ error: err.errors }, { status: 400 });
       }
-    });
-
-    const updated = await getCourseForUser(courseId, userId);
-    return NextResponse.json(updated);
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      return NextResponse.json({ error: err.errors }, { status: 400 });
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
+  });
 }
 
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ courseId: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  return withSpan("DELETE /api/courses/[courseId]", async () => {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const userId = (session.user as { id: string }).id;
-  const { courseId } = await params;
-  const existing = await getCourseForUser(courseId, userId);
+    const userId = (session.user as { id: string }).id;
+    const { courseId } = await params;
+    const existing = await getCourseForUser(courseId, userId);
 
-  if (!existing) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+    if (!existing) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
-  await prisma.course.delete({ where: { id: courseId } });
-  return NextResponse.json({ ok: true });
+    await prisma.course.delete({ where: { id: courseId } });
+    return NextResponse.json({ ok: true });
+  });
 }

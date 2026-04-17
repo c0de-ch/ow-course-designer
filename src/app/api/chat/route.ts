@@ -3,6 +3,7 @@ import { z } from "zod";
 import { buildSystemPrompt } from "@/lib/help-context";
 import { getManualContext } from "@/lib/help-manual";
 import { checkRateLimit, getRequestIp } from "@/lib/rate-limit";
+import { withSpan } from "@/lib/otel/with-span";
 
 const MAX_MESSAGES = 40;
 const MAX_MESSAGE_CHARS = 8000;
@@ -35,34 +36,36 @@ const chatBodySchema = z.object({
 type ChatRequestBody = z.infer<typeof chatBodySchema>;
 
 export async function POST(req: NextRequest) {
-  const ip = getRequestIp(req.headers);
-  const limit = checkRateLimit(`chat:${ip}`, RATE_LIMIT_PER_MIN, 60_000);
-  if (!limit.allowed) {
-    return new Response("Too many requests", {
-      status: 429,
-      headers: { "Retry-After": String(limit.retryAfterSec) },
-    });
-  }
+  return withSpan("POST /api/chat", async () => {
+    const ip = getRequestIp(req.headers);
+    const limit = checkRateLimit(`chat:${ip}`, RATE_LIMIT_PER_MIN, 60_000);
+    if (!limit.allowed) {
+      return new Response("Too many requests", {
+        status: 429,
+        headers: { "Retry-After": String(limit.retryAfterSec) },
+      });
+    }
 
-  let body: ChatRequestBody;
-  try {
-    body = chatBodySchema.parse(await req.json());
-  } catch {
-    return new Response("Invalid request body", { status: 400 });
-  }
-  const { messages, settings, context } = body;
+    let body: ChatRequestBody;
+    try {
+      body = chatBodySchema.parse(await req.json());
+    } catch {
+      return new Response("Invalid request body", { status: 400 });
+    }
+    const { messages, settings, context } = body;
 
-  const systemPrompt = buildSystemPrompt(
-    context.pathname,
-    settings.language ?? "en"
-  );
-  const manualContext = getManualContext();
-  const fullSystem = `${systemPrompt}\n\n## Application Manual (use this to answer common questions)\n${manualContext}`;
+    const systemPrompt = buildSystemPrompt(
+      context.pathname,
+      settings.language ?? "en"
+    );
+    const manualContext = getManualContext();
+    const fullSystem = `${systemPrompt}\n\n## Application Manual (use this to answer common questions)\n${manualContext}`;
 
-  if (settings.provider === "claude") {
-    return streamFromClaude(messages, fullSystem, settings);
-  }
-  return streamFromOllama(messages, fullSystem, settings);
+    if (settings.provider === "claude") {
+      return streamFromClaude(messages, fullSystem, settings);
+    }
+    return streamFromOllama(messages, fullSystem, settings);
+  });
 }
 
 async function streamFromClaude(

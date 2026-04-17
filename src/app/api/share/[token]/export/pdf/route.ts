@@ -8,25 +8,33 @@ import {
   renderPdf,
   shareTokenPrintUrl,
 } from "@/lib/export/export-helpers";
+import { withSpan } from "@/lib/otel/with-span";
+import { exportDurationHistogram, exportsSuccessCounter, exportsFailureCounter } from "@/lib/otel/metrics";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
-  const { token } = await params;
+  return withSpan("GET /api/share/[token]/export/pdf", async () => {
+    const start = Date.now();
+    const { token } = await params;
 
-  const snapshot = await prisma.courseSnapshot.findUnique({ where: { token } });
-  if (!snapshot) {
-    return new NextResponse("Not found", { status: 404 });
-  }
+    const snapshot = await prisma.courseSnapshot.findUnique({ where: { token } });
+    if (!snapshot) {
+      return new NextResponse("Not found", { status: 404 });
+    }
 
-  const courseData = decodeCourseData(snapshot.payload);
+    const courseData = decodeCourseData(snapshot.payload);
 
-  try {
-    const pdf = await renderPdf(shareTokenPrintUrl(token));
-    return pdfResponse(pdf, courseData.name);
-  } catch (err) {
-    if (err instanceof ExportQueueTimeoutError) return queueBusyResponse();
-    throw err;
-  }
+    try {
+      const pdf = await renderPdf(shareTokenPrintUrl(token));
+      exportDurationHistogram.record(Date.now() - start, { format: "pdf" });
+      exportsSuccessCounter.add(1, { format: "pdf" });
+      return pdfResponse(pdf, courseData.name);
+    } catch (err) {
+      exportsFailureCounter.add(1, { format: "pdf" });
+      if (err instanceof ExportQueueTimeoutError) return queueBusyResponse();
+      throw err;
+    }
+  });
 }
