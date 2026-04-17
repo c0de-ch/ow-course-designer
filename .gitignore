@@ -16,7 +16,15 @@ build/
 # SQLite
 prisma/*.db
 prisma/*.db-journal
+*.db
+*.db-journal
 data/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
 
 # Misc
 .DS_Store
