@@ -40,6 +40,7 @@ import { POST as registerPOST } from "../register/route";
 import { POST as verifyPOST } from "../verify-email/route";
 import { POST as resendPOST } from "../resend-code/route";
 import { prisma } from "@/lib/prisma";
+import { _resetRateLimitsForTests } from "@/lib/rate-limit";
 import {
   sendVerificationCode,
   sendAdminNewUserNotification,
@@ -74,6 +75,7 @@ function makeRequest(body: Record<string, unknown>): NextRequest {
 // ---------------------------------------------------------------------------
 beforeEach(() => {
   jest.clearAllMocks();
+  _resetRateLimitsForTests();
 });
 
 // ===========================================================================
