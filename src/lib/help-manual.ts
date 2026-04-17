@@ -174,18 +174,35 @@ They're useful for marking beach start/finish locations or water entry points.`,
   },
 ];
 
+const STOP_WORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "by", "can", "do", "does",
+  "for", "from", "how", "i", "if", "in", "is", "it", "its", "me", "my",
+  "of", "on", "or", "the", "this", "to", "want", "we", "what", "when",
+  "where", "which", "who", "why", "will", "with", "you", "your",
+]);
+
+function tokenize(text: string): Set<string> {
+  const tokens = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length > 1 && !STOP_WORDS.has(t))
+    .map((t) => t.replace(/(ies|es|s)$/, (m) => (m === "ies" ? "y" : "")));
+  return new Set(tokens);
+}
+
 export function findCachedResponse(message: string): string | null {
-  const lower = message.toLowerCase().trim();
+  const messageTokens = tokenize(message);
+  if (messageTokens.size === 0) return null;
 
   let bestMatch: ManualEntry | null = null;
   let bestScore = 0;
 
   for (const entry of manual) {
+    const keywordTokens = tokenize(entry.keywords.join(" "));
     let score = 0;
-    for (const keyword of entry.keywords) {
-      if (lower.includes(keyword.toLowerCase())) {
-        score++;
-      }
+    for (const kw of keywordTokens) {
+      if (messageTokens.has(kw)) score++;
     }
     if (score >= 2 && score > bestScore) {
       bestScore = score;

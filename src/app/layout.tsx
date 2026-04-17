@@ -4,6 +4,7 @@ import "./globals.css";
 import { SessionProvider } from "@/components/SessionProvider";
 import { QueryProvider } from "@/components/QueryProvider";
 import { HelpWidget } from "@/components/help/HelpWidget";
+import { HtmlLangSync } from "@/components/HtmlLangSync";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,6 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <HtmlLangSync />
         <SessionProvider>
           <QueryProvider>
             {children}

@@ -147,6 +147,31 @@ export function HelpSettings() {
             <p className="text-xs text-white/30 mt-1">
               Get your key at console.anthropic.com
             </p>
+            <div
+              role="note"
+              className="mt-2 flex gap-2 rounded-md border border-amber-400/20 bg-amber-400/5 p-2 text-xs text-amber-200/80"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="w-4 h-4 shrink-0 mt-0.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <span>
+                Your API key is stored unencrypted in this browser&apos;s
+                localStorage and is sent to Anthropic on every message. Use
+                a key scoped to this app and revoke it if this device is
+                shared.
+              </span>
+            </div>
           </div>
 
           <div>

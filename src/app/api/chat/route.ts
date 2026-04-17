@@ -1,27 +1,56 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { buildSystemPrompt } from "@/lib/help-context";
 import { getManualContext } from "@/lib/help-manual";
+import { checkRateLimit, getRequestIp } from "@/lib/rate-limit";
 
-interface ChatRequestBody {
-  messages: { role: "user" | "assistant"; content: string }[];
-  settings: {
-    provider: "claude" | "ollama";
-    claudeApiKey?: string;
-    claudeModel?: string;
-    ollamaServerUrl?: string;
-    ollamaModel?: string;
-    language?: string;
-  };
-  context: { pathname: string };
-}
+const MAX_MESSAGES = 40;
+const MAX_MESSAGE_CHARS = 8000;
+const MAX_PATHNAME_CHARS = 512;
+const RATE_LIMIT_PER_MIN = 20;
+
+const chatBodySchema = z.object({
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().min(1).max(MAX_MESSAGE_CHARS),
+      })
+    )
+    .min(1)
+    .max(MAX_MESSAGES),
+  settings: z.object({
+    provider: z.enum(["claude", "ollama"]),
+    claudeApiKey: z.string().max(256).optional(),
+    claudeModel: z.string().max(128).optional(),
+    ollamaServerUrl: z.string().max(512).optional(),
+    ollamaModel: z.string().max(128).optional(),
+    language: z.string().max(8).optional(),
+  }),
+  context: z.object({
+    pathname: z.string().max(MAX_PATHNAME_CHARS),
+  }),
+});
+
+type ChatRequestBody = z.infer<typeof chatBodySchema>;
 
 export async function POST(req: NextRequest) {
-  const body: ChatRequestBody = await req.json();
-  const { messages, settings, context } = body;
-
-  if (!messages?.length) {
-    return new Response("No messages provided", { status: 400 });
+  const ip = getRequestIp(req.headers);
+  const limit = checkRateLimit(`chat:${ip}`, RATE_LIMIT_PER_MIN, 60_000);
+  if (!limit.allowed) {
+    return new Response("Too many requests", {
+      status: 429,
+      headers: { "Retry-After": String(limit.retryAfterSec) },
+    });
   }
+
+  let body: ChatRequestBody;
+  try {
+    body = chatBodySchema.parse(await req.json());
+  } catch {
+    return new Response("Invalid request body", { status: 400 });
+  }
+  const { messages, settings, context } = body;
 
   const systemPrompt = buildSystemPrompt(
     context.pathname,
