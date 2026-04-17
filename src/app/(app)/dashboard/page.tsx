@@ -81,6 +81,9 @@ export default function DashboardPage() {
           <span className="text-sm hidden sm:block">
             {session?.user?.name ?? session?.user?.email}
           </span>
+          <Link href="/settings" className="btn btn-ghost btn-sm">
+            Settings
+          </Link>
           <button
             onClick={() => signOut({ callbackUrl: "/" })}
             className="btn btn-ghost btn-sm"

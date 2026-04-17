@@ -66,9 +66,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
     authorized({ auth, request }) {
-      const isProtected = ["/dashboard", "/designer", "/api/courses"].some(
-        (p) => request.nextUrl.pathname.startsWith(p)
-      );
+      const isProtected = [
+        "/dashboard",
+        "/designer",
+        "/settings",
+        "/api/courses",
+        "/api/account",
+      ].some((p) => request.nextUrl.pathname.startsWith(p));
       if (isProtected && !auth?.user) return false;
       return true;
     },
