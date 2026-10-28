@@ -11,10 +11,14 @@ on:
     types: [completed]
     branches: [main]
 
-# A newer run on main cancels an older one, so an older image can never reach
-# the gitops repo after a newer one.
+# One run per built commit (a re-run replaces it). Runs for different commits
+# never cancel each other: builds finish out of order, and cancelling by
+# arrival once dropped the head of main's run while the older runs skipped
+# themselves, so nothing was deployed. Only the run for the current head of
+# main proposes a deploy (first step of the deploy job), so an older image can
+# still never reach the gitops repo after a newer one.
 concurrency:
-  group: publish-chart-main
+  group: publish-chart-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: true
 
 env:
