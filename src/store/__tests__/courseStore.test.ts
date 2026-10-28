@@ -11,6 +11,7 @@ import {
   getDifferingLaps,
   CourseData,
   CourseElement,
+  useCourseStore,
 } from "../courseStore";
 
 function buoy(id: string, lat: number, lng: number, order: number, metadata: string | null = null): CourseElement {
@@ -180,5 +181,39 @@ describe("getDifferingLaps", () => {
     const diff = getDifferingLaps(els, 3);
     // lap 2 and lap 3 differ from lap 1 (which has all buoys)
     expect(diff.map((d) => d.lap).sort()).toEqual([2, 3]);
+  });
+});
+
+describe("updateElementLabel", () => {
+  beforeEach(() => {
+    useCourseStore.getState().setCourseData({
+      name: "Test",
+      lakeLabel: null,
+      lakeLatLng: null,
+      zoomLevel: 14,
+      distanceKm: null,
+      laps: 1,
+      elements: [{ id: "b1", type: "buoy", lat: 47, lng: 8, order: 0, label: null, metadata: null }],
+    } as unknown as CourseData);
+    useCourseStore.getState().setDirty(false);
+  });
+
+  it("sets a trimmed label and marks the course dirty", () => {
+    useCourseStore.getState().updateElementLabel("b1", "  Buoy 1 ");
+    const s = useCourseStore.getState();
+    expect(s.courseData.elements[0].label).toBe("Buoy 1");
+    expect(s.isDirty).toBe(true);
+  });
+
+  it("clears the label when given an empty string", () => {
+    useCourseStore.getState().updateElementLabel("b1", "Exit");
+    useCourseStore.getState().updateElementLabel("b1", "   ");
+    expect(useCourseStore.getState().courseData.elements[0].label).toBeNull();
+  });
+
+  it("can be undone", () => {
+    useCourseStore.getState().updateElementLabel("b1", "Exit");
+    useCourseStore.getState().undo();
+    expect(useCourseStore.getState().courseData.elements[0].label).toBeNull();
   });
 });

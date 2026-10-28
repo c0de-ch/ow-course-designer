@@ -280,6 +280,7 @@ interface CourseStore {
   addFinishGroup: (lat: number, lng: number) => void;
   updateElementPosition: (id: string, lat: number, lng: number) => void;
   updateElementMeta: (id: string, meta: string | null) => void;
+  updateElementLabel: (id: string, label: string | null) => void;
   removeElement: (id: string) => void;
   reorderElements: (elements: CourseElement[]) => void;
   computeDistance: () => void;
@@ -422,6 +423,16 @@ export const useCourseStore = create<CourseStore>((set, get) => ({
     const { courseData } = get();
     const elements = courseData.elements.map((el) =>
       el.id === id ? { ...el, metadata: meta } : el
+    );
+    set({ courseData: { ...courseData, elements }, isDirty: true });
+  },
+
+  updateElementLabel: (id, label) => {
+    get().pushUndo();
+    const { courseData } = get();
+    const trimmed = label?.trim() || null;
+    const elements = courseData.elements.map((el) =>
+      el.id === id ? { ...el, label: trimmed } : el
     );
     set({ courseData: { ...courseData, elements }, isDirty: true });
   },

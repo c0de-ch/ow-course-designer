@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { encodeCourseData } from "@/lib/course-encoder";
 import { withBrowser, ExportQueueTimeoutError } from "@/lib/puppeteer";
 import type { CourseData, ElementType } from "@/store/courseStore";
-import { internalAppUrl } from "@/lib/app-url";
+import { internalAppUrl, runtimeEnv } from "@/lib/app-url";
 
 type CourseWithElements = Course & { elements: DbCourseElement[] };
 
@@ -56,6 +56,51 @@ function safeFilename(name: string, ext: string): string {
   return `${name.replace(/[^a-z0-9]/gi, "_")}.${ext}`;
 }
 
+/** The print page could not show the map (bad key, key not allowed for the host, ...). */
+export class MapsUnavailableError extends Error {}
+
+/**
+ * Serve requests for the public origin from the local server. The print page
+ * then runs under the public hostname, which is the one the Google Maps key
+ * allows, while no request leaves the pod.
+ */
+async function servePublicOriginLocally(
+  page: import("puppeteer").Page,
+  publicOrigin: string,
+  internalOrigin: string
+) {
+  await page.setRequestInterception(true);
+  page.on("request", async (req) => {
+    const url = req.url();
+    if (!url.startsWith(publicOrigin + "/")) {
+      await req.continue();
+      return;
+    }
+    try {
+      const headers = { ...req.headers() };
+      delete headers.host;
+      const res = await fetch(internalOrigin + url.slice(publicOrigin.length), {
+        method: req.method(),
+        headers,
+        body: req.postData(),
+        redirect: "manual",
+      });
+      const responseHeaders: Record<string, string> = {};
+      res.headers.forEach((value, key) => {
+        // fetch already decoded the body
+        if (key !== "content-encoding" && key !== "content-length") responseHeaders[key] = value;
+      });
+      await req.respond({
+        status: res.status,
+        headers: responseHeaders,
+        body: Buffer.from(await res.arrayBuffer()),
+      });
+    } catch {
+      await req.abort().catch(() => {});
+    }
+  });
+}
+
 async function renderPage<T>(
   printUrl: string,
   capture: (page: import("puppeteer").Page) => Promise<T>
@@ -63,10 +108,34 @@ async function renderPage<T>(
   return withBrowser(async (browser) => {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900 });
-    await page.goto(printUrl, { waitUntil: "networkidle0", timeout: 30000 });
-    await page.waitForSelector("#map-ready", { timeout: 20000 });
+
+    const internalOrigin = internalAppUrl();
+    const publicOrigin = runtimeEnv("APP_URL")?.replace(/\/+$/, "");
+    let target = printUrl;
+    if (publicOrigin && publicOrigin !== internalOrigin && printUrl.startsWith(internalOrigin)) {
+      await servePublicOriginLocally(page, publicOrigin, internalOrigin);
+      target = publicOrigin + printUrl.slice(internalOrigin.length);
+    }
+
+    await page.goto(target, { waitUntil: "networkidle0", timeout: 30000 });
+    await page.waitForSelector("#map-ready, #map-error", { timeout: 20000 });
+    // Google reports a rejected key shortly after the first tiles; give it a moment
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const failed = await page.evaluate(() => {
+      const el = document.getElementById("map-error");
+      return el ? el.getAttribute("data-message") || "unknown error" : null;
+    });
+    if (failed) {
+      throw new MapsUnavailableError(
+        `${failed}. Add ${publicOrigin ?? internalOrigin}/* to the key's website restrictions in Google Cloud.`
+      );
+    }
     return capture(page);
   });
+}
+
+export function mapsUnavailableResponse(err: MapsUnavailableError): NextResponse {
+  return new NextResponse(`The map could not be rendered: ${err.message}`, { status: 502 });
 }
 
 export async function renderPdf(printUrl: string): Promise<Buffer> {

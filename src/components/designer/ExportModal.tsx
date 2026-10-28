@@ -95,14 +95,32 @@ export function ExportModal({ courseId, onClose }: ExportModalProps) {
         return;
       }
 
-      // PDF and PNG are slow — show spinner
+      // PDF and PNG are rendered on the server and take a few seconds. Fetch
+      // them so a failure shows here instead of downloading an error page.
       setExporting(true);
-      downloadFrom(`/api/courses/${courseId}/export/${selected}`);
-      // Give the browser a moment to start the download
-      setTimeout(() => {
-        setExporting(false);
-        onClose();
-      }, 2000);
+      const res = await fetch(`/api/courses/${courseId}/export/${selected}`);
+      if (!res.ok) {
+        const message = (await res.text().catch(() => "")).slice(0, 400);
+        throw new Error(
+          res.status === 503
+            ? "The export server is busy. Please try again in a moment."
+            : message || `Export failed (${res.status})`
+        );
+      }
+      const blob = await res.blob();
+      const name =
+        /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ??
+        `course.${selected}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      setExporting(false);
+      onClose();
     } catch (err) {
       setError((err as Error).message || "Export failed");
       setExporting(false);

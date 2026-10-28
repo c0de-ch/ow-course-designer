@@ -1,15 +1,17 @@
 import { CourseElement } from "@/store/courseStore";
-import { getMarkerSvg } from "./markers/markerIcons";
+import { createMarkerLabel, getMarkerSvg } from "./markers/markerIcons";
 
 type OnSelect = (id: string) => void;
 type OnDragEnd = (id: string, lat: number, lng: number) => void;
+type OnContextMenu = (id: string, clientX: number, clientY: number) => void;
 
 export function createMarkerOverlay(
   element: CourseElement,
   isSelected: boolean,
   onSelect: OnSelect,
   onDragEnd: OnDragEnd,
-  routeIndex: number | null = null
+  routeIndex: number | null = null,
+  onContextMenu?: OnContextMenu
 ): google.maps.OverlayView {
   class Impl extends google.maps.OverlayView {
     private el: CourseElement;
@@ -30,11 +32,7 @@ export function createMarkerOverlay(
       div.innerHTML = getMarkerSvg(this.el.type, isSelected, this.el.metadata);
 
       if (this.el.label) {
-        const label = document.createElement("div");
-        label.style.cssText =
-          "position:absolute;top:100%;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:13px;background:rgba(255,255,255,0.85);color:#111827;padding:2px 8px;border-radius:4px;font-weight:700;pointer-events:none;margin-top:2px;backdrop-filter:blur(4px);";
-        label.textContent = this.el.label;
-        div.appendChild(label);
+        div.appendChild(createMarkerLabel(this.el.label));
       }
 
       if (routeIndex !== null) {
@@ -49,6 +47,13 @@ export function createMarkerOverlay(
       div.addEventListener("click", (e) => {
         e.stopPropagation();
         onSelect(this.el.id);
+      });
+
+      // Right-click (long press on touch screens) opens the marker menu
+      div.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onContextMenu?.(this.el.id, e.clientX, e.clientY);
       });
 
       // Drag
