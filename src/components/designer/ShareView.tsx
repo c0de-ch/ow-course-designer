@@ -5,6 +5,7 @@ import { Loader } from "@googlemaps/js-api-loader";
 import { getPublicConfig } from "@/lib/public-config";
 import { CourseData, getBuoySide, getRouteParts, getFinishMidpoint, getMandatoryLaps, getBuoysForLap, getDifferingLaps, parseFreehand, getRaceTotalKm } from "@/store/courseStore";
 import { computeBearing, arcAroundBuoy } from "@/lib/haversine";
+import { coursePoints } from "@/lib/course-bounds";
 import { createMarkerLabel, getMarkerSvg } from "./markers/markerIcons";
 import { RaceBranding } from "./RaceBranding";
 import { Legend, ENTRIES as LEGEND_ENTRIES } from "./Legend";
@@ -414,11 +415,12 @@ export function ShareView({ courseData, isPrint, token, flyoverUrl }: Props) {
     }
 
     // Fit bounds to all visible elements
-    if (visibleElements.length >= 2) {
+    const points = coursePoints(courseData.elements);
+    if (points.length === 1) {
+      map.setCenter(points[0]);
+    } else if (points.length > 1) {
       const bounds = new google.maps.LatLngBounds();
-      visibleElements.forEach((el) =>
-        bounds.extend(new google.maps.LatLng(el.lat, el.lng))
-      );
+      points.forEach((p) => bounds.extend(p));
       map.fitBounds(bounds, 60);
     }
 

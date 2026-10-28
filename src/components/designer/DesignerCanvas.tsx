@@ -13,6 +13,7 @@ import { Legend } from "./Legend";
 import { TOOLS } from "./ToolPanel";
 import { MarkerContextMenu } from "./MarkerContextMenu";
 import { getPublicConfig } from "@/lib/public-config";
+import { coursePoints } from "@/lib/course-bounds";
 import { IconAlert } from "@/components/ui/icons";
 
 export function DesignerCanvas() {
@@ -145,6 +146,17 @@ export function DesignerCanvas() {
         });
       }
     });
+
+    // Open on the course itself rather than on the searched lake, which may
+    // be far from where the markers were actually placed
+    const points = coursePoints(courseData.elements);
+    if (points.length === 1) {
+      m.setCenter(points[0]);
+    } else if (points.length > 1) {
+      const bounds = new google.maps.LatLngBounds();
+      points.forEach((p) => bounds.extend(p));
+      m.fitBounds(bounds, 60);
+    }
 
     setMap(m);
   // eslint-disable-next-line react-hooks/exhaustive-deps
