@@ -11,7 +11,7 @@ export function getDb(): PrismaClient {
 }
 
 // Returns the most recent verification code for an email so tests can
-// advance past the register → verify gate without an SMTP dependency.
+// advance past the register → verify gate without parsing the email.
 export async function latestVerificationCode(
   email: string
 ): Promise<string | null> {

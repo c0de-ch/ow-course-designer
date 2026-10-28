@@ -39,6 +39,15 @@ export default defineConfig({
       NEXT_PUBLIC_APP_URL: BASE_URL,
       NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:
         process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "e2e-dummy",
+      // Verification emails must actually send: when they fail, the register
+      // page shows "could not send" instead of the code form. CI runs Mailpit
+      // as a service; locally: docker run --rm -p 1025:1025 axllent/mailpit
+      SMTP_HOST: process.env.SMTP_HOST ?? "localhost",
+      SMTP_PORT: process.env.SMTP_PORT ?? "1025",
+      SMTP_SECURE: "false",
+      SMTP_USER: "",
+      SMTP_PASS: "",
+      SMTP_FROM: "OW Course Designer <e2e@example.test>",
     },
   },
 });
