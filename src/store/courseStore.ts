@@ -98,13 +98,80 @@ export function getFinishMidpoint(parts: RouteParts): { lat: number; lng: number
   return parts.finishLeft; // legacy single finish or undefined
 }
 
-/** Parse mandatoryLaps from element metadata — returns null if all laps */
+/** Parse mandatoryLaps from element metadata — returns null if all laps, [] if none */
 export function getMandatoryLaps(metadata?: string | null): number[] | null {
   try {
     const m = metadata ? JSON.parse(metadata) : null;
-    if (m?.mandatoryLaps) return String(m.mandatoryLaps).split(",").map(Number).filter((n) => !isNaN(n));
+    if (m?.mandatoryLaps != null) {
+      return String(m.mandatoryLaps).split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0);
+    }
   } catch {}
   return null;
+}
+
+/** Per-lap swim side overrides, e.g. { 2: "right" } */
+export function getLapSides(metadata?: string | null): Record<number, BuoySide> {
+  try {
+    const m = metadata ? JSON.parse(metadata) : null;
+    if (m?.lapSides && typeof m.lapSides === "object") return m.lapSides;
+  } catch {}
+  return {};
+}
+
+/** Swim side of a buoy on a given lap: the lap override, else its normal side */
+export function getBuoySideForLap(metadata: string | null | undefined, lap: number): BuoySide {
+  return getLapSides(metadata)[lap] ?? getBuoySide(metadata);
+}
+
+/** What a buoy does on one lap: normal side, skipped, or a different side */
+export type LapRule = "default" | "skip" | BuoySide;
+
+export function getBuoyLapRule(metadata: string | null | undefined, lap: number): LapRule {
+  const ml = getMandatoryLaps(metadata);
+  if (ml !== null && !ml.includes(lap)) return "skip";
+  return getLapSides(metadata)[lap] ?? "default";
+}
+
+export function setBuoyLapRuleInMeta(
+  metadata: string | null | undefined,
+  lap: number,
+  rule: LapRule,
+  totalLaps: number
+): string | null {
+  let meta: Record<string, unknown> = {};
+  try {
+    const parsed = metadata ? JSON.parse(metadata) : null;
+    if (parsed && !Array.isArray(parsed)) meta = parsed;
+  } catch {}
+
+  const allLaps = Array.from({ length: Math.max(totalLaps, lap) }, (_, i) => i + 1);
+  const active = new Set(getMandatoryLaps(metadata) ?? allLaps);
+  const lapSides = { ...getLapSides(metadata) };
+
+  if (rule === "skip") {
+    active.delete(lap);
+    delete lapSides[lap];
+  } else {
+    active.add(lap);
+    if (rule === "default" || rule === getBuoySide(metadata)) delete lapSides[lap];
+    else lapSides[lap] = rule;
+  }
+
+  // Drop the lap list when every lap is swum, so laps added later are included
+  if (allLaps.every((l) => active.has(l))) delete meta.mandatoryLaps;
+  else meta.mandatoryLaps = [...active].sort((a, b) => a - b).join(",");
+
+  if (Object.keys(lapSides).length > 0) meta.lapSides = lapSides;
+  else delete meta.lapSides;
+
+  return Object.keys(meta).length > 0 ? JSON.stringify(meta) : null;
+}
+
+/** True when some buoy is skipped or swum on a different side on some lap */
+export function hasLapVariation(buoys: CourseElement[]): boolean {
+  return buoys.some(
+    (b) => getMandatoryLaps(b.metadata) !== null || Object.keys(getLapSides(b.metadata)).length > 0
+  );
 }
 
 /** Get the subset of buoys that are active for a given lap number */
@@ -185,14 +252,14 @@ export const DIFF_LAP_COLORS = ["#22C55E", "#7C3AED", "#EC4899", "#F97316"];
 export function getDifferingLaps(elements: CourseElement[], laps: number): { lap: number; color: string }[] {
   const buoys = getRouteParts(elements).buoys;
   if (buoys.length < 2 || laps <= 1) return [];
-  const hasVariation = buoys.some((b) => getMandatoryLaps(b.metadata) !== null);
-  if (!hasVariation) return [];
+  if (!hasLapVariation(buoys)) return [];
 
   const allBuoyIds = buoys.map((b) => b.id).join(",");
   const result: { lap: number; color: string }[] = [];
   for (let lap = 1; lap <= laps; lap++) {
     const lapBuoys = getBuoysForLap(buoys, lap);
-    if (lapBuoys.map((b) => b.id).join(",") !== allBuoyIds) {
+    const sideChanged = lapBuoys.some((b) => getBuoySideForLap(b.metadata, lap) !== getBuoySide(b.metadata));
+    if (sideChanged || lapBuoys.map((b) => b.id).join(",") !== allBuoyIds) {
       result.push({ lap, color: DIFF_LAP_COLORS[result.length % DIFF_LAP_COLORS.length] });
     }
   }
@@ -280,6 +347,7 @@ interface CourseStore {
   addFinishGroup: (lat: number, lng: number) => void;
   updateElementPosition: (id: string, lat: number, lng: number) => void;
   updateElementMeta: (id: string, meta: string | null) => void;
+  setBuoyLapRule: (id: string, lap: number, rule: LapRule) => void;
   updateElementLabel: (id: string, label: string | null) => void;
   removeElement: (id: string) => void;
   reorderElements: (elements: CourseElement[]) => void;
@@ -425,6 +493,13 @@ export const useCourseStore = create<CourseStore>((set, get) => ({
       el.id === id ? { ...el, metadata: meta } : el
     );
     set({ courseData: { ...courseData, elements }, isDirty: true });
+  },
+
+  setBuoyLapRule: (id, lap, rule) => {
+    const { courseData } = get();
+    const el = courseData.elements.find((e) => e.id === id);
+    if (!el) return;
+    get().updateElementMeta(id, setBuoyLapRuleInMeta(el.metadata, lap, rule, courseData.laps ?? 1));
   },
 
   updateElementLabel: (id, label) => {

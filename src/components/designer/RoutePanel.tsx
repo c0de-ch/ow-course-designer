@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { LapEditorModal } from "./LapEditorModal";
 import { useCourseStore, CourseElement, ElementType, BuoySide, FINISH_TYPES, getBuoySide, setBuoySideInMeta, parseFreehand } from "@/store/courseStore";
 
 const TYPE_LABELS: Record<ElementType, string> = {
@@ -119,6 +120,7 @@ export function RoutePanel() {
 
   const dragIndexRef = useRef<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [lapEditorOpen, setLapEditorOpen] = useState(false);
 
   const routeElements = [...courseData.elements]
     .filter((el) => el.type !== "rescue_zone" && el.type !== "freehand")
@@ -232,9 +234,21 @@ export function RoutePanel() {
 
   return (
     <div className="p-3 border-t border-base-300">
-      <p className="side-heading">
-        Route Order
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="side-heading">
+          Route Order
+        </p>
+        {routeElements.some((el) => el.type === "buoy") && (
+          <button
+            onClick={() => setLapEditorOpen(true)}
+            className="text-xs font-medium text-sky-700 hover:underline px-2"
+            title="Choose per lap which buoys are skipped or rounded on the other side"
+          >
+            Edit laps
+          </button>
+        )}
+      </div>
+      {lapEditorOpen && <LapEditorModal onClose={() => setLapEditorOpen(false)} />}
       <div className="flex flex-col gap-0.5">
         {routeElements.map((el, i) => {
           const isSelected = selectedElementId === el.id;
