@@ -9,6 +9,9 @@ import {
   computeLapLoopKm,
   getRaceTotalKm,
   getDifferingLaps,
+  getBuoyLapRule,
+  getBuoySideForLap,
+  setBuoyLapRuleInMeta,
   CourseData,
   CourseElement,
   useCourseStore,
@@ -215,5 +218,52 @@ describe("updateElementLabel", () => {
     useCourseStore.getState().updateElementLabel("b1", "Exit");
     useCourseStore.getState().undo();
     expect(useCourseStore.getState().courseData.elements[0].label).toBeNull();
+  });
+});
+
+describe("per-lap buoy rules", () => {
+  it("defaults to swimming every buoy as placed", () => {
+    expect(getBuoyLapRule(null, 2)).toBe("default");
+    expect(getBuoySideForLap(JSON.stringify({ side: "left" }), 2)).toBe("left");
+  });
+
+  it("skips a buoy on one lap and keeps the others", () => {
+    const meta = setBuoyLapRuleInMeta(JSON.stringify({ side: "left" }), 2, "skip", 3);
+    expect(getMandatoryLaps(meta)).toEqual([1, 3]);
+    expect(getBuoyLapRule(meta, 2)).toBe("skip");
+    expect(getBuoyLapRule(meta, 1)).toBe("default");
+    expect(getBuoySide(meta)).toBe("left");
+  });
+
+  it("can skip a buoy on every lap", () => {
+    let meta: string | null = null;
+    for (const lap of [1, 2]) meta = setBuoyLapRuleInMeta(meta, lap, "skip", 2);
+    expect(getMandatoryLaps(meta)).toEqual([]);
+    expect(getBuoysForLap([buoy("a", 0, 0, 0, meta)], 1)).toEqual([]);
+  });
+
+  it("overrides the side on one lap", () => {
+    const meta = setBuoyLapRuleInMeta(JSON.stringify({ side: "left" }), 2, "right", 3);
+    expect(getBuoySideForLap(meta, 2)).toBe("right");
+    expect(getBuoySideForLap(meta, 1)).toBe("left");
+    expect(getBuoyLapRule(meta, 2)).toBe("right");
+  });
+
+  it("clears the rule when set back to default or to the normal side", () => {
+    const base = JSON.stringify({ side: "left" });
+    const skipped = setBuoyLapRuleInMeta(base, 2, "skip", 3);
+    expect(setBuoyLapRuleInMeta(skipped, 2, "default", 3)).toBe(base);
+    const flipped = setBuoyLapRuleInMeta(base, 2, "right", 3);
+    expect(setBuoyLapRuleInMeta(flipped, 2, "left", 3)).toBe(base);
+    expect(setBuoyLapRuleInMeta(null, 1, "default", 3)).toBeNull();
+  });
+
+  it("marks laps with a different side as differing", () => {
+    const els = [
+      buoy("a", 47.0, 8.0, 0),
+      buoy("b", 47.01, 8.0, 1, setBuoyLapRuleInMeta(null, 2, "right", 2)),
+      buoy("c", 47.0, 8.01, 2),
+    ];
+    expect(getDifferingLaps(els, 2).map((d) => d.lap)).toEqual([2]);
   });
 });

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
-import { useCourseStore, BuoySide, getBuoySide, getRouteParts, getFinishMidpoint, getMandatoryLaps, getBuoysForLap, getDifferingLaps, parseFreehand, getRaceTotalKm } from "@/store/courseStore";
+import { useCourseStore, BuoySide, getBuoySide, getRouteParts, getFinishMidpoint, getBuoysForLap, getBuoySideForLap, hasLapVariation, getDifferingLaps, parseFreehand, getRaceTotalKm } from "@/store/courseStore";
 import { createMarkerOverlay } from "./MarkerOverlay";
 import { LakeSearch } from "./LakeSearch";
 import { getToolCursorSvg } from "./markers/markerIcons";
@@ -239,7 +239,7 @@ export function DesignerCanvas() {
     const parts = getRouteParts(courseData.elements);
     const buoys = parts.buoys;
     const laps = courseData.laps ?? 1;
-    const hasPerLapVariation = buoys.some((b) => getMandatoryLaps(b.metadata) !== null);
+    const hasPerLapVariation = hasLapVariation(buoys);
 
     // Helper: build offset path for a set of buoys (closed loop)
     function buildOffsetPath(loopBuoys: typeof buoys) {
@@ -328,15 +328,18 @@ export function DesignerCanvas() {
           for (let j = 0; j < n; j++) {
             const a = lapBuoys[j];
             const b = lapBuoys[(j + 1) % n];
-            if (fullAdj.has(`${a.id}->${b.id}`)) continue; // same as full route
+            const sameSides =
+              getBuoySideForLap(a.metadata, dl.lap) === getBuoySide(a.metadata) &&
+              getBuoySideForLap(b.metadata, dl.lap) === getBuoySide(b.metadata);
+            if (sameSides && fullAdj.has(`${a.id}->${b.id}`)) continue; // same as full route
             // Shortcut segment: compute arc points in lap context
             const prevA = lapBuoys[(j - 1 + n) % n];
             const nextB = lapBuoys[(j + 2) % n];
-            const aSide = getBuoySide(a.metadata);
+            const aSide = getBuoySideForLap(a.metadata, dl.lap);
             const aPt = { lat: a.lat, lng: a.lng };
             const aArc = aSide === "directional" ? [aPt]
               : arcAroundBuoy(aPt, computeBearing(prevA, b), aSide);
-            const bSide = getBuoySide(b.metadata);
+            const bSide = getBuoySideForLap(b.metadata, dl.lap);
             const bPt = { lat: b.lat, lng: b.lng };
             const bArc = bSide === "directional" ? [bPt]
               : arcAroundBuoy(bPt, computeBearing(a, nextB), bSide);

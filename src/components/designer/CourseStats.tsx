@@ -1,6 +1,8 @@
 "use client";
 
-import { useCourseStore, getRaceTotalKm } from "@/store/courseStore";
+import { useState } from "react";
+import { useCourseStore, getRaceTotalKm, getRouteParts } from "@/store/courseStore";
+import { LapEditorModal } from "./LapEditorModal";
 
 const pill = "bg-white/90 backdrop-blur-sm text-gray-900 h-8 px-3 rounded-lg shadow-lg flex items-center text-sm font-semibold whitespace-nowrap";
 
@@ -10,6 +12,8 @@ export function CourseStats() {
 
   const routeElements = elements.filter((el) => el.type !== "rescue_zone" && el.type !== "feeding_platform");
   const { totalKm, avgLoopKm } = getRaceTotalKm(courseData);
+  const hasBuoys = getRouteParts(elements).buoys.length > 0;
+  const [lapEditorOpen, setLapEditorOpen] = useState(false);
 
   return (
     <div className="flex flex-wrap items-center gap-2" role="status" aria-live="polite" aria-label="Course statistics">
@@ -38,7 +42,17 @@ export function CourseStats() {
           aria-label="Number of laps"
           className="w-12 h-6 text-center text-sm bg-gray-100 text-gray-900 border border-gray-300 rounded outline-none"
         />
+        {hasBuoys && (
+          <button
+            onClick={() => setLapEditorOpen(true)}
+            className="ml-1 text-xs font-medium text-sky-700 hover:underline"
+            title="Choose per lap which buoys are skipped or rounded on the other side"
+          >
+            Edit laps
+          </button>
+        )}
       </div>
+      {lapEditorOpen && <LapEditorModal onClose={() => setLapEditorOpen(false)} />}
     </div>
   );
 }
