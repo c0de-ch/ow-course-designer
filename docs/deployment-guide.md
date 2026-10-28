@@ -1,37 +1,26 @@
 # Deployment Guide
 
-Complete guide for deploying OW Course Designer to production using Docker Compose or Kubernetes.
+How to deploy OW Course Designer on Kubernetes. Production (https://ow-course-designer.c0de.ch) runs on k8s01, deployed by Argo CD from the [lab-k8s01-gitops](https://github.com/c0de-ch/lab-k8s01-gitops) repo.
 
 ## Table of Contents
 
 1. [Prerequisites](#1-prerequisites)
 2. [Google Cloud Setup](#2-google-cloud-setup)
-3. [Cloudflare Setup](#3-cloudflare-setup)
-4. [Server Preparation](#4-server-preparation)
-5. [Environment Configuration](#5-environment-configuration)
-6. [Docker Compose Deployment](#6-docker-compose-deployment)
-7. [Kubernetes Deployment](#7-kubernetes-deployment)
-8. [CI/CD](#8-cicd)
-9. [Backup & Maintenance](#9-backup--maintenance)
-10. [Troubleshooting](#10-troubleshooting)
+3. [Configuration](#3-configuration)
+4. [Install with Helm](#4-install-with-helm)
+5. [CI/CD](#5-cicd)
+6. [Backup & Maintenance](#6-backup--maintenance)
+7. [Troubleshooting](#7-troubleshooting)
 
 ---
 
 ## 1. Prerequisites
 
-| Requirement | Minimum |
-|-------------|---------|
-| Server | 1 vCPU, 2 GB RAM, 10 GB disk |
-| Docker | 24.0+ with Compose v2 |
-| Domain | DNS managed by Cloudflare (or bring your own TLS) |
-| Google Cloud | Project with billing enabled |
-
-For Kubernetes deployments, you additionally need:
-
-- A running cluster (1.27+)
-- `kubectl` configured with cluster access
-- An ingress controller (nginx-ingress) or Cloudflare Tunnel
-- cert-manager (if using Let's Encrypt for TLS)
+- A Kubernetes cluster (1.27+) and `kubectl` with access to it
+- Helm 3
+- A Gateway API gateway or an ingress controller to route traffic to the service
+- A storage class for a `ReadWriteOnce` volume (5 Gi by default)
+- A Google Cloud project with billing enabled (Maps, optional Google sign-in)
 
 ---
 
@@ -53,7 +42,7 @@ For Kubernetes deployments, you additionally need:
      - `https://your-domain.example.com/*`
      - `http://localhost:3000/*` (dev)
    - **API restrictions**: Restrict to **Maps JavaScript API** and **Places API (New)**
-8. Copy the key — this becomes `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
+8. Copy the key — this becomes the `GOOGLE_MAPS_API_KEY` secret
 
 ### 2.2 OAuth 2.0 Client (Google Login)
 
@@ -76,178 +65,62 @@ For Kubernetes deployments, you additionally need:
 
 ---
 
-## 3. Cloudflare Setup
+## 3. Configuration
 
-Skip this section if you manage TLS another way.
+The chart (`deploy/helm/ow-course-designer`, published as `oci://ghcr.io/c0de-ch/charts/ow-course-designer`) takes three kinds of settings.
 
-1. In the [Cloudflare Dashboard](https://dash.cloudflare.com/), select your zone
-2. **DNS → Records**: Add an **A record**
-   - **Name**: your subdomain (e.g. `ow-course-designer`)
-   - **IPv4**: your server's public IP
-   - **Proxy status**: Proxied (orange cloud)
-3. **SSL/TLS → Overview**: Set mode to **Full (strict)**
-4. **SSL/TLS → Origin Server**: Create an origin certificate if needed
-   - Cloudflare terminates public HTTPS; "Full (strict)" validates the origin cert
+**Secrets.** Point `secrets.existingSecret` at a Secret you manage (a SealedSecret in GitOps), or let the chart create one from `secrets.create` for a quick install (the values then end up in the release history). Keys the app reads:
 
-Traffic flow: `client → Cloudflare (HTTPS) → your server:3010 (HTTP)`
+| Key | |
+|-----|---|
+| `AUTH_SECRET` | Required. `openssl rand -base64 32` |
+| `GOOGLE_MAPS_API_KEY` | From section 2.1 |
+| `GOOGLE_MAPS_MAP_ID` | Optional, for a styled map |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional, Google sign-in (section 2.2) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Sign-up verification emails |
+| `ADMIN_EMAIL` | |
 
----
+**Non-secret settings** go in `config` (for example `SMTP_SECURE`). The database settings (`DATABASE_PROVIDER=sqlite`, `DATABASE_URL=file:/app/data/prod.db`) are set by the chart.
 
-## 4. Server Preparation
+**Public URL.** Set `appUrl` to the public base URL (used for share links and as `AUTH_URL`). Leave it empty when the app answers on several hostnames: it then takes the URL from each request.
 
-### 4.1 Dedicated User
-
-```bash
-# As root
-adduser --system --group --home /srv/ow-course-designer --shell /bin/bash owcourse
-usermod -aG docker owcourse
-```
-
-### 4.2 FHS 3.0 Directory Layout
-
-```bash
-mkdir -p /srv/ow-course-designer            # compose file + image artifacts
-mkdir -p /etc/ow-course-designer            # host-specific config (.env)
-mkdir -p /var/lib/ow-course-designer/flyovers  # persistent data (DB + videos)
-mkdir -p /var/log/ow-course-designer        # logs (future)
-
-chown -R owcourse:owcourse \
-  /srv/ow-course-designer \
-  /etc/ow-course-designer \
-  /var/lib/ow-course-designer \
-  /var/log/ow-course-designer
-```
-
-### 4.3 SSH Access
-
-```bash
-# From your local machine
-ssh-copy-id owcourse@your-server.example.com
-```
+**Routing.** Add one entry per Gateway to `httpRoutes`, or enable `ingress`. When TLS ends in front of the Gateway (Cloudflare, for example), set `forwardedProtoHttps: true` on the route so the app knows the client used https.
 
 ---
 
-## 5. Environment Configuration
-
-Create `/etc/ow-course-designer/.env` on the server:
+## 4. Install with Helm
 
 ```bash
-# Authentication
-AUTH_URL=https://your-domain.example.com
-AUTH_SECRET=<openssl rand -base64 32>
-
-# Google OAuth
-GOOGLE_CLIENT_ID=<from section 2.2>
-GOOGLE_CLIENT_SECRET=<from section 2.2>
-
-# Google Maps
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=<from section 2.1>
-
-# Public URL (used by Puppeteer for PDF/PNG export)
-NEXT_PUBLIC_APP_URL=https://your-domain.example.com
-
-# Optional: custom Map ID for styled maps
-# NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=
-
-# Optional: SMTP for email verification
-# SMTP_HOST=smtp.example.com
-# SMTP_PORT=587
-# SMTP_SECURE=false
-# SMTP_USER=
-# SMTP_PASS=
-# SMTP_FROM=OW Course Designer <noreply@example.com>
-# ADMIN_EMAIL=admin@example.com
-
-# Optional: OpenTelemetry
-# OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+helm install ow-course-designer oci://ghcr.io/c0de-ch/charts/ow-course-designer \
+  -n ow-course-designer --create-namespace \
+  -f my-values.yaml
 ```
 
-Lock down permissions:
+Verify:
 
 ```bash
-chmod 600 /etc/ow-course-designer/.env
-chown owcourse:owcourse /etc/ow-course-designer/.env
-```
-
-Non-secret values (`DATABASE_PROVIDER`, `DATABASE_URL`, `PUPPETEER_EXECUTABLE_PATH`, `NODE_ENV`) are set directly in `docker-compose.prod.yml` — only secrets go in the env file.
-
----
-
-## 6. Docker Compose Deployment
-
-### 6.1 Build the Image
-
-```bash
-# On your local machine (or CI)
-docker build -t ow-course-designer:latest .
-```
-
-### 6.2 Transfer to Server
-
-```bash
-docker save ow-course-designer:latest | ssh owcourse@your-server docker load
-```
-
-Or use the deploy script:
-
-```bash
-DEPLOY_SERVER=owcourse@your-server bash deploy.sh
-```
-
-### 6.3 Deploy
-
-Copy `docker-compose.prod.yml` to `/srv/ow-course-designer/` on the server, then:
-
-```bash
-cd /srv/ow-course-designer
-docker compose -f docker-compose.prod.yml up -d
-```
-
-### 6.4 Verify
-
-```bash
-# Check container status and health
-docker ps
+kubectl -n ow-course-designer rollout status deployment/ow-course-designer
+kubectl -n ow-course-designer get pods
 
 # Should return {"status":"ok"}
-curl -s http://localhost:3010/api/health
+kubectl -n ow-course-designer port-forward svc/ow-course-designer 8080:80
+curl http://localhost:8080/api/health
 
-# View logs
-docker logs ow-course-designer
+kubectl -n ow-course-designer logs deployment/ow-course-designer -c app -f
 ```
 
-### 6.5 OpenTelemetry Overlay (Optional)
+### Design Notes
 
-If you run an OTEL collector, create `docker-compose.otel.yml`:
+- **Single replica only** — SQLite does not support concurrent writers. Do not scale above 1.
+- **Recreate strategy** — ensures the DB lock is released before the new pod starts. This causes brief downtime (~30s) during updates.
+- **Init container** — runs `prisma migrate deploy` separately from the app so migration failures are clearly visible in pod events.
+- **`/dev/shm` emptyDir** — Chromium (used for PDF/PNG export) needs more than the default 64MB of shared memory.
 
-```yaml
-version: "3.9"
-services:
-  app:
-    environment:
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
-```
+### Plain manifests (Kustomize)
 
-Deploy with:
+The `k8s/` directory holds plain manifests as an alternative to the chart.
 
-```bash
-docker compose -f docker-compose.prod.yml -f docker-compose.otel.yml up -d
-```
-
----
-
-## 7. Kubernetes Deployment
-
-All manifests live in the `k8s/` directory and are managed via Kustomize.
-
-### 7.1 Prerequisites
-
-- A running Kubernetes cluster (1.27+)
-- `kubectl` configured with cluster access
-- An ingress controller or Cloudflare Tunnel
-- (Optional) cert-manager for automated TLS
-
-### 7.2 Configure Secrets
+#### Secrets
 
 Edit `k8s/secret.yaml` with your actual values — **do not commit secrets to git**. Alternatively, use a sealed-secrets controller or external secrets operator:
 
@@ -256,7 +129,7 @@ cp k8s/secret.yaml k8s/secret.local.yaml   # gitignored
 # Edit secret.local.yaml with real values
 ```
 
-### 7.3 Configure Ingress
+#### Ingress
 
 Edit `k8s/ingress.yaml`:
 
@@ -264,7 +137,7 @@ Edit `k8s/ingress.yaml`:
 - Uncomment the `cert-manager.io/cluster-issuer` annotation if using Let's Encrypt
 - Or remove the Ingress entirely if using Cloudflare Tunnel
 
-### 7.4 Set Image Tag
+#### Image tag
 
 In `k8s/kustomization.yaml`, update the image tag:
 
@@ -275,7 +148,7 @@ images:
     newTag: "1.0.0"
 ```
 
-### 7.5 Deploy
+#### Apply
 
 ```bash
 # Dry-run first
@@ -285,176 +158,84 @@ kubectl apply -k k8s/ --dry-run=client
 kubectl apply -k k8s/
 ```
 
-### 7.6 Verify
+---
 
-```bash
-# Watch rollout
-kubectl -n ow-course-designer rollout status deployment/ow-course-designer
+## 5. CI/CD
 
-# Check pod status
-kubectl -n ow-course-designer get pods
+Every push to `main`:
 
-# Check health
-kubectl -n ow-course-designer port-forward svc/ow-course-designer 8080:80
-curl http://localhost:8080/api/health
+1. **Build & Push to GHCR** (`.github/workflows/ghcr.yml`) builds the image and pushes `ghcr.io/c0de-ch/ow-course-designer:sha-<short>`.
+2. **Publish Chart & Deploy** (`.github/workflows/publish-chart.yml`) publishes the chart when its version is new, then pushes a branch to the gitops repo that sets the new image tag (`apps/ow-course-designer/values.yaml`) and chart version. A workflow there opens the pull request.
+3. Merging that pull request deploys it through Argo CD.
 
-# View logs
-kubectl -n ow-course-designer logs -l app.kubernetes.io/name=ow-course-designer -f
-```
-
-### Design Notes
-
-- **Single replica only** — SQLite does not support concurrent writers. Do not scale above 1.
-- **Recreate strategy** — ensures the DB lock is released before the new pod starts. This causes brief downtime (~30s) during updates.
-- **Init container** — runs `prisma migrate deploy` separately from the app so migration failures are clearly visible in pod events.
-- **`/dev/shm` emptyDir** — Chromium (used for PDF/PNG export) needs more than the default 64MB of shared memory.
+Only the newest commit on `main` is proposed; an older run that finishes later skips itself. The workflow needs the `GITOPS_DEPLOY_KEY` secret, a deploy key with write access to the gitops repo.
 
 ---
 
-## 8. CI/CD
+## 6. Backup & Maintenance
 
-### GitHub Actions
+The SQLite database (`/app/data/prod.db`) and the flyover videos (`/app/data/flyovers/`) live on the persistent volume.
 
-The repository includes `.github/workflows/deploy.yml` which builds and deploys on every push to `main`.
+### 6.1 Backup
 
-**Required GitHub Secrets** (Settings → Secrets and variables → Actions):
+The image has no `sqlite3` CLI, so take a consistent copy with the app stopped:
 
-| Secret | Value |
-|--------|-------|
-| `DEPLOY_HOST` | `your-server.example.com` |
-| `DEPLOY_USER` | `owcourse` |
-| `DEPLOY_SSH_KEY` | SSH private key for the `owcourse` user |
+```bash
+NS=ow-course-designer
+kubectl -n $NS scale deployment/ow-course-designer --replicas=0
+kubectl -n $NS run backup --rm -i --restart=Never --image=busybox \
+  --overrides='{"spec":{"securityContext":{"runAsUser":1000},"containers":[{"name":"backup","image":"busybox","command":["tar","czf","-","-C","/data","."],"stdin":true,"volumeMounts":[{"name":"data","mountPath":"/data"}]}],"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"ow-course-designer-data"}}]}}' \
+  > ow-course-designer-data-$(date +%Y%m%d).tar.gz
+kubectl -n $NS scale deployment/ow-course-designer --replicas=1
+```
 
-The workflow:
-1. Builds the Docker image
-2. Compresses and SCPs it to the server
-3. SSHs in, loads the image, runs `docker compose up -d`
+The archive holds `prod.db` and `flyovers/`. **Do not** copy the database file while the app is running: the copy may be corrupt. For regular backups, a CSI volume snapshot or Velero avoids the downtime.
 
-For Kubernetes deployments, replace the deploy step with:
+### 6.2 Updates
 
-```yaml
-- name: Deploy to K8s
-  run: |
-    kubectl set image deployment/ow-course-designer \
-      app=your-registry/ow-course-designer:${{ github.sha }} \
-      -n ow-course-designer
+In production, merge the gitops pull request (section 5). For a manual Helm install:
+
+```bash
+helm upgrade ow-course-designer oci://ghcr.io/c0de-ch/charts/ow-course-designer \
+  -n ow-course-designer --reuse-values --set image.tag=sha-<short>
 ```
 
 ---
 
-## 9. Backup & Maintenance
+## 7. Troubleshooting
 
-### 9.1 SQLite Backup
-
-The SQLite database is a single file at `/var/lib/ow-course-designer/prod.db`. Use the `.backup` command for a consistent copy:
+### Pod won't start
 
 ```bash
-# On the server
-sqlite3 /var/lib/ow-course-designer/prod.db ".backup /tmp/ow-backup-$(date +%Y%m%d).db"
-```
-
-**Do not** simply `cp` the database file while the application is running — this may produce a corrupted copy.
-
-### 9.2 Flyover Videos
-
-```bash
-tar czf /tmp/flyovers-$(date +%Y%m%d).tar.gz -C /var/lib/ow-course-designer flyovers/
-```
-
-### 9.3 Automated Backup Script
-
-```bash
-#!/usr/bin/env bash
-# /etc/cron.daily/ow-course-designer-backup
-set -euo pipefail
-
-BACKUP_DIR=/var/backups/ow-course-designer
-mkdir -p "$BACKUP_DIR"
-
-DATE=$(date +%Y%m%d)
-
-# Database (consistent copy)
-sqlite3 /var/lib/ow-course-designer/prod.db ".backup $BACKUP_DIR/prod-$DATE.db"
-
-# Flyover videos
-tar czf "$BACKUP_DIR/flyovers-$DATE.tar.gz" -C /var/lib/ow-course-designer flyovers/
-
-# Retain last 7 backups
-find "$BACKUP_DIR" -name "prod-*.db" -mtime +7 -delete
-find "$BACKUP_DIR" -name "flyovers-*.tar.gz" -mtime +7 -delete
-```
-
-### 9.4 Updates
-
-```bash
-# Docker Compose
-DEPLOY_SERVER=owcourse@your-server bash deploy.sh
-
-# Kubernetes
-kubectl -n ow-course-designer set image deployment/ow-course-designer \
-  app=ow-course-designer:new-tag \
-  migrate=ow-course-designer:new-tag
-```
-
----
-
-## 10. Troubleshooting
-
-### Container won't start
-
-```bash
-docker logs ow-course-designer
-# Look for Prisma migration errors or missing env vars
+kubectl -n ow-course-designer describe pod -l app.kubernetes.io/name=ow-course-designer
+kubectl -n ow-course-designer logs deployment/ow-course-designer -c migrate
+kubectl -n ow-course-designer logs deployment/ow-course-designer -c app
 ```
 
 Common causes:
-- Missing `/etc/ow-course-designer/.env` — the compose file requires this file to exist
-- `AUTH_SECRET` not set — NextAuth refuses to start without it
-- Database path not writable — check volume mount permissions
+- A failed migration: the `migrate` init container's log shows it
+- `AUTH_SECRET` missing from the Secret: NextAuth refuses to start without it
+- The volume is not writable or not bound: check the PVC with `kubectl get pvc`
 
 ### Chromium / PDF export crashes
 
-Symptoms: PDF/PNG export returns 500, logs show `Running as root without --no-sandbox is not supported`.
-
-Fix: The container already runs as non-root. If you see shared memory errors:
-
-```
-[Chromium] Failed to create shared memory
-```
-
-Ensure `shm_size: "256m"` is set in docker-compose (or the `/dev/shm` emptyDir in K8s).
+If the logs show `Failed to create shared memory`, raise `shmSize` (default `256Mi`); the chart mounts it as `/dev/shm`.
 
 ### SQLite database locked
 
-Symptoms: `SQLITE_BUSY` errors in logs.
-
-Causes:
-- Multiple container replicas running (only 1 is supported)
-- A backup process is holding a lock (`cp` instead of `.backup`)
-- Stale WAL file after crash
-
-Fix:
-
-```bash
-# Ensure only one container is running
-docker ps | grep ow-course-designer
-
-# If using K8s, verify replicas=1
-kubectl -n ow-course-designer get deployment
-
-# Checkpoint WAL manually (stop the app first)
-sqlite3 /var/lib/ow-course-designer/prod.db "PRAGMA wal_checkpoint(TRUNCATE);"
-```
+Symptoms: `SQLITE_BUSY` errors in the logs. Causes:
+- More than one replica: the app supports exactly one
+- A stale WAL file after a crash
 
 ### Google Maps not loading
 
-- Verify `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is set and the key has **Maps JavaScript API** and **Places API (New)** enabled
+- Verify `GOOGLE_MAPS_API_KEY` is set in the Secret and the key has **Maps JavaScript API** and **Places API (New)** enabled
 - Check HTTP referrer restrictions match your domain exactly
 - Open browser console for specific Google Maps error codes
 
 ### OAuth callback errors
 
-- Verify `AUTH_URL` matches your public URL exactly (including `https://`)
+- Verify `appUrl` (`AUTH_URL`) matches your public URL exactly (including `https://`), or leave it empty and set `forwardedProtoHttps` on the route
 - Check **Authorized redirect URIs** in Google Cloud Console include:
   `https://your-domain.example.com/api/auth/callback/google`
 - If behind Cloudflare, ensure the proxy is passing the correct `Host` header
@@ -462,14 +243,7 @@ sqlite3 /var/lib/ow-course-designer/prod.db "PRAGMA wal_checkpoint(TRUNCATE);"
 ### Health check failing
 
 ```bash
-# Test directly
-curl -v http://localhost:3010/api/health
-
-# Inside the container
-docker exec ow-course-designer wget -qO- http://localhost:3000/api/health
+kubectl -n ow-course-designer exec deployment/ow-course-designer -c app -- wget -qO- http://localhost:3000/api/health
 ```
 
-If the health check returns `503`, the database is unreachable. Check:
-- Volume mount is correct
-- Database file exists and is readable
-- No lock contention (see "SQLite database locked" above)
+If it returns `503`, the database is unreachable: check that the volume is mounted and `/app/data/prod.db` exists.

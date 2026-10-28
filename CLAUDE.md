@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **NextAuth.js v4** — Credentials (email/password) + Google OAuth, JWT sessions
 - **Zustand** — client state for the designer canvas
 - **Puppeteer** — PDF and PNG export (uses system Chromium in Docker)
-- **Docker/Podman** — multi-stage build, GHCR images, Podman on server
+- **Docker** — multi-stage build, GHCR images; production on Kubernetes (Helm chart, Argo CD)
 
 ## Dev Commands
 
@@ -28,7 +28,6 @@ npx prisma migrate deploy         # Apply migrations in production
 npx prisma studio                 # DB GUI at http://localhost:5555
 npx prisma generate               # Regenerate Prisma client after schema changes
 docker build -t ow-course-designer .    # Local build (CI pushes to GHCR)
-bash deploy.sh                    # Pull from GHCR & deploy via SSH (needs DEPLOY_SERVER env var)
 ```
 
 ## Environment Variables
@@ -110,7 +109,7 @@ prisma/schema.prisma
 - **MarkerOverlay**: Extends `google.maps.OverlayView`, renders SVG div positioned via `fromLatLngToDivPixel`, handles drag with mousedown/mousemove/mouseup.
 - **PDF/PNG export**: Puppeteer navigates to `/share/<token>?print=1`, waits for `#map-ready` element, then captures.
 - **Flyover video**: Recorded client-side via `MediaRecorder` + `canvas.captureStream()`. Uploaded to `data/flyovers/` on the server and attached to the share snapshot. The share page only links to the pre-generated video — no live preview or generation.
-- **Data directory (FHS 3.0)**: In production, persistent data lives at `/var/lib/ow-course-designer/` (SQLite DB + `flyovers/`), config at `/etc/ow-course-designer/.env`, and the compose file at `/srv/ow-course-designer/`. The data dir is mounted to `/app/data` in the container. In development, `data/` is a local directory.
+- **Data directory**: The SQLite DB (`prod.db`) and `flyovers/` live in `/app/data` in the container, a persistent volume on k8s (single replica: SQLite allows one writer). In development, `data/` is a local directory.
 - **Database provider**: Hardcoded to `sqlite` in `prisma/schema.prisma`. Change to `postgresql` and update `DATABASE_URL` for production PostgreSQL.
 
 ## Google Maps — Always Use the New (Places v2) API
@@ -128,14 +127,6 @@ Key properties on `Place`: `displayName`, `location`, `formattedAddress`, `viewp
 
 ## Deployment
 
-Production URL: `https://ow-course-designer.c0de.ch` — runs on port **3010** behind Cloudflare proxy.
+Production URL: `https://ow-course-designer.c0de.ch` — runs **only on Kubernetes** (k8s01), deployed by Argo CD from `c0de-ch/lab-k8s01-gitops` with the Helm chart in `deploy/helm/ow-course-designer`.
 
-Container images are pushed to GHCR (`ghcr.io/c0de-ch/ow-course-designer`) by GitHub Actions on every push to `main` and on version tags. The server uses **Podman** to pull and run containers.
-
-```bash
-# Manual deploy (pulls from GHCR, restarts via Podman on server)
-export DEPLOY_SERVER=owcourse@ow-course-designer.c0de.ch
-bash deploy.sh
-```
-
-Place `.env` (with production secrets) at `/etc/ow-course-designer/.env` on the server before first deploy. See `README.md` for full setup instructions (dedicated user, FHS directory layout, Google OAuth/Maps config, Cloudflare).
+On every push to `main`, **Build & Push to GHCR** pushes `ghcr.io/c0de-ch/ow-course-designer:sha-<short>`, then **Publish Chart & Deploy** publishes the chart (when its version is new) and pushes a gitops branch that sets the new tag; merging the resulting gitops PR deploys it. Production secrets, hostname and routing live in the gitops repo, not here. See `docs/deployment-guide.md`.

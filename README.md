@@ -49,61 +49,23 @@ ghcr.io/c0de-ch/ow-course-designer:sha-abc123  # specific commit
 
 Production URL: **https://ow-course-designer.c0de.ch**
 
-The app runs as a container on port **3010** behind Cloudflare proxy (HTTPS). Kubernetes manifests are available in `k8s/`.
+Production runs on Kubernetes (k8s01), deployed by Argo CD from the [lab-k8s01-gitops](https://github.com/c0de-ch/lab-k8s01-gitops) repo with the Helm chart in [`deploy/helm/ow-course-designer`](deploy/helm/ow-course-designer).
 
-For the full deployment guide — including Google Cloud setup, Cloudflare configuration, Kubernetes, backups, and troubleshooting — see **[docs/deployment-guide.md](docs/deployment-guide.md)**.
+Every push to `main` deploys like this:
 
----
+1. **Build & Push to GHCR** (`.github/workflows/ghcr.yml`) builds the image and pushes `ghcr.io/c0de-ch/ow-course-designer:sha-<short>`.
+2. **Publish Chart & Deploy** (`.github/workflows/publish-chart.yml`) publishes the chart to `oci://ghcr.io/c0de-ch/charts` when its version is new, then pushes a `deploy/ow-course-designer-sha-<short>` branch to the gitops repo that sets the new image tag. A workflow there opens the pull request.
+3. Merging that pull request deploys it: Argo CD syncs the new tag to the cluster.
 
-### 1. Server: Install Podman
+The workflow needs one secret, `GITOPS_DEPLOY_KEY`: a deploy key with write access to the gitops repo. Secrets, the hostname and routing for production are set in the gitops repo (`apps/ow-course-designer/values.yaml`), not here.
 
-```bash
-# Debian/Ubuntu
-apt-get update && apt-get install -y podman podman-compose
+The database (SQLite) and flyover videos live on the chart's persistent volume, mounted at `/app/data`. Run a single replica only: SQLite does not support concurrent writers.
 
-# RHEL/Fedora
-dnf install -y podman podman-compose
-```
-
-Verify the installation:
-
-```bash
-podman --version
-podman-compose --version
-```
+For other clusters, Google Cloud setup and troubleshooting, see **[docs/deployment-guide.md](docs/deployment-guide.md)**.
 
 ---
 
-### 2. Server: Create a Dedicated User
-
-```bash
-# As root on the server
-adduser --system --group --home /srv/ow-course-designer --shell /bin/bash owcourse
-
-# Allow lingering so user-level systemd services persist after logout
-loginctl enable-linger owcourse
-
-# Create FHS-compliant directories
-mkdir -p /srv/ow-course-designer            # compose file + artifacts
-mkdir -p /etc/ow-course-designer            # host-specific config (.env)
-mkdir -p /var/lib/ow-course-designer/flyovers  # persistent data (DB + videos)
-mkdir -p /var/log/ow-course-designer        # logs (future)
-
-chown -R owcourse:owcourse /srv/ow-course-designer \
-                           /etc/ow-course-designer \
-                           /var/lib/ow-course-designer \
-                           /var/log/ow-course-designer
-```
-
-Set up SSH key access for deployments:
-
-```bash
-ssh-copy-id owcourse@ow-course-designer.c0de.ch
-```
-
----
-
-### 3. Google Cloud: Maps API Key
+### Google Cloud: Maps API Key
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project (or select an existing one)
@@ -123,7 +85,7 @@ ssh-copy-id owcourse@ow-course-designer.c0de.ch
 
 ---
 
-### 4. Google Cloud: OAuth 2.0 Client (for Google Login)
+### Google Cloud: OAuth 2.0 Client (for Google Login)
 
 1. In the same Google Cloud project, go to **APIs & Services → OAuth consent screen**
 2. Configure the consent screen:
@@ -146,109 +108,6 @@ ssh-copy-id owcourse@ow-course-designer.c0de.ch
     - **Client ID** → `GOOGLE_CLIENT_ID`
     - **Client secret** → `GOOGLE_CLIENT_SECRET`
 
----
-
-### 5. Server: Environment File
-
-```bash
-sudo -u owcourse bash
-
-cat > /etc/ow-course-designer/.env <<'EOF'
-NEXTAUTH_URL=https://ow-course-designer.c0de.ch
-NEXTAUTH_SECRET=<generate with: openssl rand -base64 32>
-GOOGLE_CLIENT_ID=<from step 4>
-GOOGLE_CLIENT_SECRET=<from step 4>
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=<from step 3>
-NEXT_PUBLIC_APP_URL=https://ow-course-designer.c0de.ch
-EOF
-
-chmod 600 /etc/ow-course-designer/.env
-```
-
-Non-secret build-time defaults (`DATABASE_PROVIDER`, `DATABASE_URL`, `PUPPETEER_EXECUTABLE_PATH`) are set inline in `docker-compose.prod.yml` — only secrets and host-specific values go in the env file.
-
----
-
-### 6. Cloudflare: DNS & HTTPS
-
-1. Log in to [Cloudflare Dashboard](https://dash.cloudflare.com/) → select the `c0de.ch` zone
-2. Go to **DNS → Records**
-3. Add an **A record**:
-   - **Name**: `ow-course-designer`
-   - **IPv4 address**: your server IP
-   - **Proxy status**: **Proxied** (orange cloud)
-4. Go to **SSL/TLS → Overview**
-   - Set encryption mode to **Full (strict)**
-5. Go to **SSL/TLS → Origin Server**
-   - Create an **Origin Certificate** if you don't have one already
-   - Install it on your server — Cloudflare terminates public HTTPS, and "Full (strict)" validates the origin cert
-6. Cloudflare proxies `https://ow-course-designer.c0de.ch` → `http://your-server:3010`
-
-The container binds to port **3010** on the host. Cloudflare handles HTTPS termination and proxies traffic to this port.
-
----
-
-### 7. Deploy
-
-#### Pull and Run with Podman
-
-```bash
-# On the server as owcourse
-cd /srv/ow-course-designer
-
-# Pull the latest image from GHCR
-podman pull ghcr.io/c0de-ch/ow-course-designer:latest
-
-# Start the service (compose file should already be in place)
-podman compose -f docker-compose.prod.yml up -d
-```
-
-#### Manual Deploy (from local machine)
-
-```bash
-DEPLOY_SERVER=owcourse@ow-course-designer.c0de.ch bash deploy.sh
-```
-
-The deploy script copies the compose file to the server, pulls the image from GHCR, and restarts the container using Podman.
-
-#### Auto Deploy (GitHub Actions)
-
-Pushes to `main` trigger two workflows:
-1. **Build & Push to GHCR** (`.github/workflows/ghcr.yml`) — builds the image and pushes it to `ghcr.io/c0de-ch/ow-course-designer`
-2. **Deploy** (`.github/workflows/deploy.yml`) — runs after the build succeeds, pulls the image on the server and restarts the container with Podman
-
-**Required GitHub Secrets** (Settings → Secrets and variables → Actions):
-
-| Secret | Description |
-|--------|-------------|
-| `DEPLOY_HOST` | `ow-course-designer.c0de.ch` |
-| `DEPLOY_USER` | `owcourse` |
-| `DEPLOY_SSH_KEY` | SSH private key for the `owcourse` user |
-
-#### Updating
-
-```bash
-# On the server
-cd /srv/ow-course-designer
-podman pull ghcr.io/c0de-ch/ow-course-designer:latest
-podman compose -f docker-compose.prod.yml up -d --remove-orphans
-podman image prune -f
-```
-
----
-
-### Data Volumes (FHS 3.0 Layout)
-
-The deployment follows the [FHS 3.0](https://refspecs.linuxfoundation.org/FHS_3.0/fhs/index.html) directory layout:
-
-| Path | Purpose |
-|------|---------|
-| `/srv/ow-course-designer/` | Compose file, deployment artifacts |
-| `/etc/ow-course-designer/.env` | Host-specific configuration (secrets) |
-| `/var/lib/ow-course-designer/` | Persistent data — mounted to `/app/data` in the container |
-| `/var/lib/ow-course-designer/prod.db` | SQLite database |
-| `/var/lib/ow-course-designer/flyovers/` | Pre-recorded flyover videos |
-| `/var/log/ow-course-designer/` | Log files (future) |
 
 ## License
 

@@ -10,7 +10,6 @@ data
 docs
 k8s
 docker-compose*.yml
-deploy.sh
 *.md
 .vscode
 *.tar.gz
