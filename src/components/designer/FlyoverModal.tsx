@@ -38,6 +38,8 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
   const framesRef = useRef<CameraFrame[]>([]);
   const abortRef = useRef(false);
   const swimmerTrailRef = useRef<google.maps.Polyline | null>(null);
+  const swimmerDotRef = useRef<google.maps.Circle | null>(null);
+  const swimmerHaloRef = useRef<google.maps.Circle | null>(null);
   /** The wake's points, newest last; handed to the line whole on every frame */
   const trailPointsRef = useRef<google.maps.LatLng[]>([]);
   const swimmerOverlayRef = useRef<google.maps.OverlayView | null>(null);
@@ -194,8 +196,10 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
         overlay.setMap(map);
       });
 
-      // Swimmer: a short wake line ending in an orange dot with a white ring
-      // and a light halo (symbols keep their pixel size at every zoom)
+      // Swimmer: a short wake line and an orange dot with a white ring and a
+      // light halo. Circles, not symbols on the line: the vector map left
+      // moving line symbols behind as white dots. Sizes are in metres, which
+      // matches the old pixel size at the flyover's fixed zoom (18).
       swimmerTrailRef.current = new google.maps.Polyline({
         map,
         visible: false,
@@ -204,29 +208,28 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
         strokeOpacity: 0.6,
         strokeWeight: 5,
         zIndex: 900,
-        icons: [
-          {
-            offset: "100%",
-            icon: {
-              path: google.maps.SymbolPath.CIRCLE,
-              scale: 20,
-              fillColor: "#FFFFFF",
-              fillOpacity: 0.35,
-              strokeWeight: 0,
-            },
-          },
-          {
-            offset: "100%",
-            icon: {
-              path: google.maps.SymbolPath.CIRCLE,
-              scale: 10,
-              fillColor: SWIMMER_COLOR,
-              fillOpacity: 1,
-              strokeColor: "#FFFFFF",
-              strokeWeight: 3,
-            },
-          },
-        ],
+      });
+      swimmerHaloRef.current = new google.maps.Circle({
+        map,
+        visible: false,
+        radius: 8,
+        fillColor: "#FFFFFF",
+        fillOpacity: 0.35,
+        strokeWeight: 0,
+        clickable: false,
+        zIndex: 901,
+      });
+      swimmerDotRef.current = new google.maps.Circle({
+        map,
+        visible: false,
+        radius: 4,
+        fillColor: SWIMMER_COLOR,
+        fillOpacity: 1,
+        strokeColor: "#FFFFFF",
+        strokeOpacity: 1,
+        strokeWeight: 3,
+        clickable: false,
+        zIndex: 902,
       });
 
       const swimmerOverlay = new google.maps.OverlayView();
@@ -278,22 +281,23 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
       return;
     }
 
-    const trail = swimmerTrailRef.current;
-    if (!trail) return;
-    // Replace the whole path in one update. Editing it point by point (push,
-    // then removeAt) redrew the dot several times per frame, and the vector
-    // map left some of those in-between halos behind as white dots.
+    // The wake: the whole path in one update per frame
     const prev = trailPointsRef.current;
-    // The dot sits at the end of the line, which needs two points
-    const points = [...(prev.length === 0 ? [point] : prev.slice(-(TRAIL_POINTS - 1))), point];
+    const points = [...prev.slice(-(TRAIL_POINTS - 1)), point];
     trailPointsRef.current = points;
-    trail.setPath(points);
-    if (!trail.getVisible()) trail.setVisible(true);
+    for (const shape of [swimmerTrailRef.current, swimmerHaloRef.current, swimmerDotRef.current]) {
+      if (shape && !shape.getVisible()) shape.setVisible(true);
+    }
+    swimmerTrailRef.current?.setPath(points);
+    swimmerHaloRef.current?.setCenter(point);
+    swimmerDotRef.current?.setCenter(point);
   }, []);
 
   const hideSwimmer = useCallback(() => {
     swimmerTrailRef.current?.setVisible(false);
     swimmerTrailRef.current?.setPath([]);
+    swimmerHaloRef.current?.setVisible(false);
+    swimmerDotRef.current?.setVisible(false);
     trailPointsRef.current = [];
     if (swimmerDivRef.current) swimmerDivRef.current.style.display = "none";
   }, []);
