@@ -41,9 +41,12 @@ Images are built automatically by GitHub Actions and pushed to GHCR on every pus
 
 ```
 ghcr.io/c0de-ch/ow-course-designer:latest     # latest from main
-ghcr.io/c0de-ch/ow-course-designer:v1.0.0     # tagged release
+ghcr.io/c0de-ch/ow-course-designer:1.0.61     # version of a main build
+ghcr.io/c0de-ch/ow-course-designer:1.1.0      # tagged release (v1.1.0)
 ghcr.io/c0de-ch/ow-course-designer:sha-abc123  # specific commit
 ```
+
+**Versions.** Every build of `main` gets the next patch version automatically: the version in `package.json` plus the number of commits since it was set (`scripts/version.sh`), so each merge deploys as 1.0.N+1. The app shows it in the footer and in `/api/health`. To start a new minor or major version, run the **Release** workflow (it sets `package.json`, tags `vX.Y.Z` and creates the GitHub release); the patch count starts again from there.
 
 ## Deployment
 
