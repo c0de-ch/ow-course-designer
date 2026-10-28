@@ -1,5 +1,5 @@
 import { haversineDistanceKm, LatLng } from "@/lib/haversine";
-import { CourseElement, getRouteParts, getLapLoop, getStartLeg, getFinishLeg } from "@/store/courseStore";
+import { CourseElement, getRouteParts, getLapRun, getStartLeg, getFinishLeg } from "@/store/courseStore";
 
 export interface CameraFrame {
   center: google.maps.LatLngLiteral;
@@ -84,14 +84,15 @@ export function buildCameraPath(
     lapBoundaries.push(pts.length);
     const lapNum = lap + 1;
 
-    // Per-lap filtering: only the buoys and gates swum on this lap
-    const loop = getLapLoop(elements, lapNum);
-    if (loop.length === 0) continue;
+    // Per-lap filtering: only the buoys and gates swum on this lap, up to
+    // where the next lap starts (a gate after the last buoy ends the lap)
+    const { points, next } = getLapRun(elements, lapNum, laps);
+    if (points.length === 0) continue;
 
-    pts.push(...loop);
+    pts.push(...points);
 
-    // Close the loop back to first waypoint of this lap
-    pts.push(loop[0]);
+    // The last lap closes its loop; the others run on into the next lap's first buoy
+    if (lapNum === laps && next) pts.push(next);
   }
 
   // Exit: last buoy of the last lap → (finish gate) → finish (only if finish exists)

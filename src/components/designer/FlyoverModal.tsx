@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useCourseStore, CourseData, getRaceTotalKm, getRouteParts } from "@/store/courseStore";
+import { useCourseStore, CourseData, getRaceTotalKm, getRouteParts, getBuoyNumbers } from "@/store/courseStore";
 import { buildRouteLines, ROUTE_COLOR } from "@/lib/route-geometry";
 import { getMarkerSvg } from "./markers/markerIcons";
 import { buildCameraPath, type CameraFrame } from "@/lib/flyover/cameraPath";
@@ -62,6 +62,7 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
     }
 
     // All visible elements (for markers) and route elements (for polyline/path)
+    const buoyNumbers = getBuoyNumbers(courseData.elements);
     const visibleElements = courseData.elements
       .filter((el) => el.type !== "rescue_zone")
       .sort((a, b) => a.order - b.order);
@@ -164,7 +165,7 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
 
       // Draw markers (all visible elements including feeding platforms)
       visibleElements.forEach((el) => {
-        const svgHtml = getMarkerSvg(el.type, false, el.metadata);
+        const svgHtml = getMarkerSvg(el.type, false, el.metadata, buoyNumbers.get(el.id));
         const overlay = new google.maps.OverlayView();
         overlay.onAdd = function () {
           const div = document.createElement("div");

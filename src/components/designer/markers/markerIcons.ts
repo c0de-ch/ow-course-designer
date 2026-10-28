@@ -1,24 +1,39 @@
-import { ElementType, ActiveTool, BuoySide, getBuoySide } from "@/store/courseStore";
+import { ElementType, ActiveTool, BuoySide, getBuoySide, getBuoyColor, defaultBuoyColor } from "@/store/courseStore";
 
-function buoySvg(selected: boolean, side: BuoySide): string {
-  const color = side === "left" ? "#EF4444" : side === "right" ? "#22C55E" : "#FBBF24";
+/** Dark strokes on light buoys (yellow, white), white on the others */
+function inkFor(fill: string): string {
+  const n = parseInt(fill.slice(1), 16);
+  const lum = 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+  return lum > 170 ? "#1F2937" : "white";
+}
+
+function buoySvg(selected: boolean, side: BuoySide, color: string | null = null, number?: number): string {
+  const fill = color ?? defaultBuoyColor(side);
+  const ink = inkFor(fill);
   const ring = selected
     ? '<circle cx="14" cy="14" r="13" fill="none" stroke="white" stroke-width="2.5"/>'
     : "";
 
   let arrow: string;
   if (side === "left") {
-    arrow = `<path d="M18,14 L8,14 M12,10 L8,14 L12,18" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
+    arrow = `<path d="M18,14 L8,14 M12,10 L8,14 L12,18" stroke="${ink}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
   } else if (side === "right") {
-    arrow = `<path d="M10,14 L20,14 M16,10 L20,14 L16,18" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
+    arrow = `<path d="M10,14 L20,14 M16,10 L20,14 L16,18" stroke="${ink}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
   } else {
-    arrow = `<path d="M14,20 L14,8 M10,12 L14,8 L18,12" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
+    arrow = `<path d="M14,20 L14,8 M10,12 L14,8 L18,12" stroke="${ink}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
   }
 
-  return `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+  // Race number of a turn buoy, on a white disc at the top left
+  const badge = number
+    ? `<circle cx="3" cy="3" r="7.5" fill="white" stroke="#1F2937" stroke-width="1.5"/>
+    <text x="3" y="3" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="${number > 9 ? 8 : 10}" font-weight="700" fill="#1F2937">${number}</text>`
+    : "";
+
+  return `<svg width="28" height="28" viewBox="0 0 28 28" overflow="visible" xmlns="http://www.w3.org/2000/svg">
     ${ring}
-    <circle cx="14" cy="14" r="11" fill="${color}" stroke="rgba(0,0,0,0.35)" stroke-width="1.5"/>
+    <circle cx="14" cy="14" r="11" fill="${fill}" stroke="rgba(0,0,0,0.35)" stroke-width="1.5"/>
     ${arrow}
+    ${badge}
   </svg>`;
 }
 
@@ -196,9 +211,10 @@ function feedingPlatformSvg(selected: boolean): string {
   </svg>`;
 }
 
-export function getMarkerSvg(type: ElementType, selected: boolean, metadata?: string | null): string {
+/** `buoyNumber`: the race number of a turn buoy (see getBuoyNumbers) */
+export function getMarkerSvg(type: ElementType, selected: boolean, metadata?: string | null, buoyNumber?: number): string {
   switch (type) {
-    case "buoy":                return buoySvg(selected, getBuoySide(metadata));
+    case "buoy":                return buoySvg(selected, getBuoySide(metadata), getBuoyColor(metadata), buoyNumber);
     case "start":               return startSvg(selected);
     case "finish":              return finishSvg(selected);
     case "finish_left":         return finishLeftSvg(selected);

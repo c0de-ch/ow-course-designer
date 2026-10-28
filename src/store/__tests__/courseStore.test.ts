@@ -21,12 +21,18 @@ import {
   setGateBetweenInMeta,
   getGateLapProblem,
   computeLapRouteKm,
+  getLapRun,
+  getBuoyNumbers,
+  buoyName,
+  getBuoyColor,
+  setBuoyColorInMeta,
   START_ID,
   FINISH_ID,
   CourseData,
   CourseElement,
   useCourseStore,
 } from "../courseStore";
+import { haversineDistanceKm } from "@/lib/haversine";
 
 function buoy(id: string, lat: number, lng: number, order: number, metadata: string | null = null): CourseElement {
   return { id, type: "buoy", lat, lng, order, metadata };
@@ -359,5 +365,86 @@ describe("route with skipped buoys and gates", () => {
     expect(getGateBetween(meta)).toEqual({ from: "b1", to: "b2" });
     expect(getMandatoryLaps(meta)).toEqual([2, 3]);
     expect(setGateBetweenInMeta(JSON.stringify({ between: ["b1", "b2"] }), null, null)).toBeNull();
+  });
+});
+
+describe("buoy numbers and colours", () => {
+  const side = (s: string) => JSON.stringify({ side: s });
+  const els = [
+    buoy("a", 0, 0, 1, side("left")),
+    buoy("d", 0, 0.001, 2),
+    buoy("b", 0, 0.002, 3, side("right")),
+  ];
+
+  it("numbers only the turn buoys, in route order", () => {
+    const n = getBuoyNumbers(els);
+    expect([...n.entries()]).toEqual([["a", 1], ["b", 2]]);
+    expect(buoyName(els[1], n)).toBe("Directional buoy");
+    expect(buoyName(els[2], n)).toBe("Buoy 2");
+    expect(buoyName({ ...els[2], label: "Pier" }, n)).toBe("Pier");
+  });
+
+  it("stores a colour next to the other buoy settings and clears it", () => {
+    const meta = setBuoyColorInMeta(side("left"), "#F97316");
+    expect(getBuoyColor(meta)).toBe("#F97316");
+    expect(getBuoySide(meta)).toBe("left");
+    expect(getBuoyColor(setBuoyColorInMeta(meta, null))).toBeNull();
+    expect(setBuoyColorInMeta(JSON.stringify({ color: "#F97316" }), null)).toBeNull();
+    expect(getBuoyColor(JSON.stringify({ color: "red;x" }))).toBeNull();
+  });
+});
+
+describe("gate that ends a lap", () => {
+  const finish: CourseElement = { id: "f", type: "finish_endpoint", lat: -0.005, lng: -0.01, order: 99 };
+  const gate = (meta: Record<string, unknown>): CourseElement[] => [
+    { id: "gl", type: "gate_left", lat: 0.005, lng: 0.012, order: 10, metadata: JSON.stringify(meta) },
+    { id: "gr", type: "gate_right", lat: 0.005, lng: 0.014, order: 11 },
+  ];
+  const ids = (pts: { id: string }[]) => pts.map((p) => p.id);
+
+  it("runs from the last buoy through the gate into the next lap's first buoy", () => {
+    // lap 2 skips b1, so it starts at b2
+    const els = [
+      buoy("b1", 0, 0, 1, JSON.stringify({ mandatoryLaps: "1" })),
+      buoy("b2", 0.01, 0, 2),
+      buoy("b3", 0.01, 0.01, 3),
+      ...gate({ between: ["b3", "b2"], mandatoryLaps: "1" }),
+      finish,
+    ];
+    const run = getLapRun(els, 1, 2);
+    expect(ids(run.points)).toEqual(["b1", "b2", "b3", "gl"]);
+    expect(run.next?.id).toBe("b2");
+    expect(getGateLapProblem(els, getGates(els)[0], 1, 2)).toBeNull();
+    // the lap's distance ends where lap 2 starts
+    const g = getGates(els)[0];
+    const expected =
+      haversineDistanceKm(els[0], els[1]) + haversineDistanceKm(els[1], els[2]) +
+      haversineDistanceKm(els[2], g) + haversineDistanceKm(g, els[1]);
+    expect(computeLapRouteKm(els, 1, 2)).toBeCloseTo(expected, 6);
+  });
+
+  it("is part of the standard loop when it ends every lap but the last", () => {
+    const els = [
+      buoy("b1", 0, 0, 1),
+      buoy("b2", 0.01, 0, 2),
+      buoy("b3", 0.01, 0.01, 3),
+      ...gate({ between: ["b3", "b1"], mandatoryLaps: "1,2" }),
+      finish,
+    ];
+    expect(ids(getBaseLoop(els, 3))).toEqual(["b1", "b2", "b3", "gl"]);
+    expect(getDifferingLaps(els, 3)).toEqual([]);
+  });
+});
+
+describe("directional buoy names", () => {
+  it("names a directional buoy after the turn buoy around it", () => {
+    const els = [
+      buoy("d0", 0, 0, 1),
+      buoy("a", 0, 0.001, 2, JSON.stringify({ side: "left" })),
+      buoy("d1", 0, 0.002, 3),
+    ];
+    const n = getBuoyNumbers(els);
+    expect(buoyName(els[0], n, els)).toBe("Directional before 1");
+    expect(buoyName(els[2], n, els)).toBe("Directional after 1");
   });
 });

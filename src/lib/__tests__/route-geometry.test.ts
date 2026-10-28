@@ -13,8 +13,17 @@ describe("buildRouteLines", () => {
     const b1 = el("b1", "buoy", 0, 0, 1, { mandatoryLaps: "2" });
     const lines = buildRouteLines([start, b1, b2, b3], 2);
     expect(lines.startLine?.arrows).toEqual([[{ lat: 0, lng: -0.01 }, { lat: 0.01, lng: 0 }]]);
-    // lap 1 deviates (b3 → b2 shortcut) and is drawn in its own colour
-    expect(lines.lapSegments.length).toBeGreaterThan(0);
+    // lap 1 runs b2 → b3 → b1 (where lap 2 starts): all on the standard loop, nothing extra drawn
+    expect(lines.lapSegments).toEqual([]);
+  });
+
+  it("draws the hand-over from a lap-ending gate into the next lap's first buoy", () => {
+    const b1 = el("b1", "buoy", 0, 0, 1, { mandatoryLaps: "1" });
+    const gl = el("gl", "gate_left", 0.005, 0.012, 4, { between: ["b3", "b2"], mandatoryLaps: "1" });
+    const gr = el("gr", "gate_right", 0.005, 0.014, 5);
+    const lines = buildRouteLines([start, b1, b2, b3, gl, gr], 2);
+    // lap 1: b1 → b2 → b3 → gate → b2 (lap 2 skips b1), in lap 1's colour
+    expect(lines.lapSegments.some((s) => s.arrows[0][1].lat === 0.01 && s.arrows[0][1].lng === 0)).toBe(true);
     expect(lines.lapSegments.every((s) => s.color !== ROUTE_COLOR)).toBe(true);
   });
 
