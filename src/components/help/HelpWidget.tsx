@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useChatStore } from "@/store/chatStore";
 import { t } from "@/lib/i18n";
@@ -20,6 +20,11 @@ export function HelpWidget() {
   const pathname = usePathname();
   const setCurrentPathname = useChatStore((s) => s.setCurrentPathname);
   const lang = settings.language;
+  // Print views (?print=1) are captured for PDF/PNG exports: no help button there
+  const [isPrintView, setIsPrintView] = useState(false);
+  useEffect(() => {
+    setIsPrintView(new URLSearchParams(window.location.search).has("print"));
+  }, [pathname]);
 
   useEffect(() => {
     setCurrentPathname(pathname);
@@ -33,6 +38,8 @@ export function HelpWidget() {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [isOpen, setOpen]);
+
+  if (isPrintView) return null;
 
   return (
     <>

@@ -5,7 +5,8 @@ import { Loader } from "@googlemaps/js-api-loader";
 import { getPublicConfig } from "@/lib/public-config";
 import { CourseData, getBuoySide, getRouteParts, getFinishMidpoint, getMandatoryLaps, getBuoysForLap, getDifferingLaps, parseFreehand, getRaceTotalKm } from "@/store/courseStore";
 import { computeBearing, arcAroundBuoy } from "@/lib/haversine";
-import { getMarkerSvg } from "./markers/markerIcons";
+import { coursePoints } from "@/lib/course-bounds";
+import { createMarkerLabel, getMarkerSvg } from "./markers/markerIcons";
 import { RaceBranding } from "./RaceBranding";
 import { Legend, ENTRIES as LEGEND_ENTRIES } from "./Legend";
 import { FlyoverModal } from "./FlyoverModal";
@@ -41,9 +42,23 @@ export function ShareView({ courseData, isPrint, token, flyoverUrl }: Props) {
   const [showFlyover, setShowFlyover] = useState(false);
 
   useEffect(() => {
+    // Tell the PDF/PNG exporter (and nobody else) that the map failed, so it
+    // can report an error instead of capturing Google's "Oops" page.
+    const signalError = (message: string) => {
+      if (document.getElementById("map-error")) return;
+      const el = document.createElement("div");
+      el.id = "map-error";
+      el.dataset.message = message;
+      el.style.display = "none";
+      document.body.appendChild(el);
+    };
+    (window as unknown as { gm_authFailure?: () => void }).gm_authFailure = () =>
+      signalError(`Google Maps rejected the API key for ${window.location.origin}`);
+
     getPublicConfig()
       .then(({ mapsApiKey }) => new Loader({ apiKey: mapsApiKey, version: "weekly", libraries: ["places"] }).load())
-      .then(() => setMapsLoaded(true));
+      .then(() => setMapsLoaded(true))
+      .catch((err: Error) => signalError(err.message || "Google Maps could not be loaded"));
   }, []);
 
   useEffect(() => {
@@ -99,6 +114,7 @@ export function ShareView({ courseData, isPrint, token, flyoverUrl }: Props) {
         const div = document.createElement("div");
         div.style.cssText = `position:absolute;transform:translate(-50%,-50%);pointer-events:none;`;
         div.innerHTML = svgHtml;
+        if (el.label) div.appendChild(createMarkerLabel(el.label));
         this.getPanes()!.overlayLayer.appendChild(div);
         (this as unknown as { _div: HTMLDivElement })._div = div;
         void w; void h;
@@ -399,19 +415,26 @@ export function ShareView({ courseData, isPrint, token, flyoverUrl }: Props) {
     }
 
     // Fit bounds to all visible elements
-    if (visibleElements.length >= 2) {
+    const points = coursePoints(courseData.elements);
+    if (points.length === 1) {
+      map.setCenter(points[0]);
+    } else if (points.length > 1) {
       const bounds = new google.maps.LatLngBounds();
-      visibleElements.forEach((el) =>
-        bounds.extend(new google.maps.LatLng(el.lat, el.lng))
-      );
+      points.forEach((p) => bounds.extend(p));
       map.fitBounds(bounds, 60);
     }
 
-    // Signal to Puppeteer that map is ready
-    const signal = document.createElement("div");
-    signal.id = "map-ready";
-    signal.style.display = "none";
-    document.body.appendChild(signal);
+    // Signal to Puppeteer that the map is ready once its tiles have loaded
+    // (with a fallback, so an export never hangs on a slow tile)
+    const signalReady = () => {
+      if (document.getElementById("map-ready")) return;
+      const signal = document.createElement("div");
+      signal.id = "map-ready";
+      signal.style.display = "none";
+      document.body.appendChild(signal);
+    };
+    google.maps.event.addListenerOnce(map, "tilesloaded", signalReady);
+    setTimeout(signalReady, 10000);
   }, [mapsLoaded, courseData, isPrint]);
 
   // Compute lap colors for legend (only laps that differ from the standard route)

@@ -34,7 +34,7 @@ const manual: ManualEntry[] = [
 3. For **Gates**: click twice — first for the left post, then for the right post
 4. For **Rescue Zones**: click to add vertices, then **double-click** to close the polygon
 5. Use the **Select tool** to drag markers to new positions
-6. **Right-click** a marker to delete it`,
+6. **Right-click** a marker to label it, change a buoy's swim side, or delete it`,
   },
   {
     keywords: ["move", "drag", "reposition"],
@@ -50,7 +50,7 @@ const manual: ManualEntry[] = [
     answer: `To delete a marker:
 
 1. Select the **Select tool** from the left sidebar
-2. **Right-click** on the marker you want to delete, or click it and press **Delete** (or use **"Delete selected"** in the sidebar)
+2. **Right-click** the marker and choose **Delete**, or click it and press **Delete** (or use **"Delete selected"** in the sidebar)
 3. The marker will be removed and the route distance will update
 4. Press **Ctrl+Z** (Cmd+Z on Mac) to undo`,
   },
@@ -172,6 +172,17 @@ They're useful for marking beach start/finish locations or water entry points.`,
 2. Click and drag on the map to draw
 3. Release to finish the shape
 4. You can customize the label and color of freehand drawings`,
+  },
+  {
+    keywords: ["label", "name", "rename", "text", "edit", "modify", "right", "click", "menu"],
+    answer: `To label or change a marker:
+
+1. **Right-click** the marker on the map (long-press on a touch screen)
+2. Type a **Label**, for example "Buoy 1" or "Exit", and press **Enter**
+3. For buoys, pick the **swim side** (left, turn or right) in the same menu
+4. **Delete** removes the marker; **Select** shows all its settings in the sidebar
+
+Labels appear next to the marker on the map, in the PDF/PNG export, and as waypoint names in GPX and KML.`,
   },
   {
     keywords: ["keyboard", "shortcut", "keys", "hotkey"],

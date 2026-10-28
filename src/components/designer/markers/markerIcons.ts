@@ -243,3 +243,12 @@ export function getToolCursorSvg(tool: ActiveTool): string | null {
       return null;
   }
 }
+
+/** Label shown under a marker, in the designer and in shared/printed maps. */
+export function createMarkerLabel(text: string): HTMLDivElement {
+  const label = document.createElement("div");
+  label.style.cssText =
+    "position:absolute;top:100%;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:13px;background:rgba(255,255,255,0.9);color:#111827;padding:2px 8px;border-radius:4px;font-weight:700;pointer-events:none;margin-top:2px;box-shadow:0 1px 2px rgba(0,0,0,0.2);font-family:system-ui,sans-serif;";
+  label.textContent = text;
+  return label;
+}

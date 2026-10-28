@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   ExportQueueTimeoutError,
+  MapsUnavailableError,
+  mapsUnavailableResponse,
   courseRecordToData,
   createSnapshotPrintUrl,
   pdfResponse,
@@ -47,6 +49,7 @@ export async function GET(
     } catch (err) {
       exportsFailureCounter.add(1, { format: "pdf" });
       if (err instanceof ExportQueueTimeoutError) return queueBusyResponse();
+      if (err instanceof MapsUnavailableError) return mapsUnavailableResponse(err);
       throw err;
     }
   });

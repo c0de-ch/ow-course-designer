@@ -11,7 +11,9 @@ import { CourseStats } from "./CourseStats";
 import { RaceBranding } from "./RaceBranding";
 import { Legend } from "./Legend";
 import { TOOLS } from "./ToolPanel";
+import { MarkerContextMenu } from "./MarkerContextMenu";
 import { getPublicConfig } from "@/lib/public-config";
+import { coursePoints } from "@/lib/course-bounds";
 import { IconAlert } from "@/components/ui/icons";
 
 export function DesignerCanvas() {
@@ -19,6 +21,7 @@ export function DesignerCanvas() {
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [mapsError, setMapsError] = useState<string | null>(null);
+  const [markerMenu, setMarkerMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const lapPolylinesRef = useRef<google.maps.Polyline[]>([]);
   const arrowPolylinesRef = useRef<google.maps.Polyline[]>([]);
@@ -56,6 +59,14 @@ export function DesignerCanvas() {
   } = useCourseStore();
   const undo = useCourseStore((s) => s.undo);
   const mapCreatedRef = useRef(false);
+
+  // The marker menu is positioned in screen space: close it when the map moves
+  useEffect(() => {
+    if (!map || !markerMenu) return;
+    const close = () => setMarkerMenu(null);
+    const listeners = [map.addListener("dragstart", close), map.addListener("zoom_changed", close)];
+    return () => listeners.forEach((l) => l.remove());
+  }, [map, markerMenu]);
 
   // Keyboard: Ctrl+Z undo, tool shortcuts, Esc back to Select, Del removes the selection
   useEffect(() => {
@@ -136,6 +147,17 @@ export function DesignerCanvas() {
       }
     });
 
+    // Open on the course itself rather than on the searched lake, which may
+    // be far from where the markers were actually placed
+    const points = coursePoints(courseData.elements);
+    if (points.length === 1) {
+      m.setCenter(points[0]);
+    } else if (points.length > 1) {
+      const bounds = new google.maps.LatLngBounds();
+      points.forEach((p) => bounds.extend(p));
+      m.fitBounds(bounds, 60);
+    }
+
     setMap(m);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapsLoaded]);
@@ -161,7 +183,13 @@ export function DesignerCanvas() {
         selectedElementId === el.id,
         (id) => setSelectedElementId(id),
         (id, lat, lng) => updateElementPosition(id, lat, lng),
-        idxMap.get(el.id) ?? null
+        idxMap.get(el.id) ?? null,
+        (id, clientX, clientY) => {
+          const rect = mapDivRef.current?.getBoundingClientRect();
+          if (!rect) return;
+          setSelectedElementId(id);
+          setMarkerMenu({ id, x: clientX - rect.left, y: clientY - rect.top });
+        }
       );
       overlay.setMap(map);
       overlaysRef.current.push(overlay);
@@ -797,6 +825,17 @@ export function DesignerCanvas() {
           </div>
         );
       })()}
+
+      {/* Right-click menu on a marker */}
+      {markerMenu && (
+        <MarkerContextMenu
+          key={markerMenu.id}
+          elementId={markerMenu.id}
+          x={markerMenu.x}
+          y={markerMenu.y}
+          onClose={() => setMarkerMenu(null)}
+        />
+      )}
 
       {/* Buoy side picker */}
       {pendingBuoy && (
