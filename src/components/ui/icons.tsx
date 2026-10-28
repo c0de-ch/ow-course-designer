@@ -81,6 +81,12 @@ export const IconTable = (p: IconProps) => (
 export const IconGlobe = (p: IconProps) => (
   <Icon {...p}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></Icon>
 );
+export const IconRotateLeft = (p: IconProps) => (
+  <Icon {...p}><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></Icon>
+);
+export const IconRotateRight = (p: IconProps) => (
+  <Icon {...p}><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></Icon>
+);
 export const IconPin = (p: IconProps) => (
   <Icon {...p}><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12Z" /><circle cx="12" cy="9" r="2.5" /></Icon>
 );

@@ -24,6 +24,8 @@ interface FlyoverModalProps {
   onVideoReady?: (blob: Blob) => void;
 }
 
+const SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
+
 export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverModalProps) {
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -46,7 +48,9 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
   // Auto-compute route distance and duration (~6s/100m, clamped 10-120s)
   const { totalKm, avgLoopKm } = getRaceTotalKm(courseData);
   const round5 = (v: number) => Math.round(v / 5) * 5;
-  const duration = Math.max(10, Math.min(120, round5(totalKm * 1000 * 0.06)));
+  const baseDuration = Math.max(10, Math.min(120, round5(totalKm * 1000 * 0.06)));
+  const [speed, setSpeed] = useState(1);
+  const duration = Math.max(3, Math.round(baseDuration / speed));
 
   // Initialize map — google.maps is already loaded by DesignerCanvas
   useEffect(() => {
@@ -243,18 +247,23 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
       swimmerOverlay.setMap(map);
       swimmerOverlayRef.current = swimmerOverlay;
 
-      // Build camera path (with laps)
-      const laps = courseData.laps ?? 1;
-      framesRef.current = buildCameraPath(courseData.elements, duration, 30, laps);
-
-      if (framesRef.current.length === 0) {
-        setStatusMsg("Need at least 2 route points for flyover");
-      } else {
-        setStatusMsg(`Ready — ${duration}s, ${laps} lap${laps > 1 ? "s" : ""}`);
-      }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Build the camera path (with laps); rebuilt when the speed changes
+  useEffect(() => {
+    if (!mapReady) return;
+    const laps = courseData.laps ?? 1;
+    framesRef.current = buildCameraPath(courseData.elements, duration, 30, laps);
+
+    if (framesRef.current.length === 0) {
+      setStatusMsg("Need at least 2 route points for flyover");
+    } else {
+      setStatusMsg(`Ready — ${duration}s, ${laps} lap${laps > 1 ? "s" : ""}`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, duration]);
 
   const moveSwimmer = useCallback((pos: google.maps.LatLngLiteral) => {
     swimmerPosRef.current = new google.maps.LatLng(pos.lat, pos.lng);
@@ -437,8 +446,8 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
   const busy = status === "previewing" || status === "recording";
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-black/50 rounded-2xl shadow-2xl ring-1 ring-white/15 flex flex-col w-full max-w-4xl max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-base-100 rounded-2xl shadow-2xl flex flex-col w-full max-w-4xl max-h-[90vh] overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-3 px-6 pt-5 pb-3">
           <h2 className="text-lg font-semibold">Flyover</h2>
@@ -505,6 +514,20 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
 
         {/* Controls */}
         <div className="flex items-center gap-3 px-6 py-4 border-t border-base-200">
+          <label className="flex items-center gap-2 text-sm text-base-content/70">
+            Speed
+            <select
+              value={speed}
+              onChange={(e) => setSpeed(Number(e.target.value))}
+              disabled={busy}
+              className="select select-sm w-24"
+              aria-label="Flyover speed"
+            >
+              {SPEEDS.map((s) => (
+                <option key={s} value={s}>{s}×</option>
+              ))}
+            </select>
+          </label>
           <span className="text-sm text-base-content/50">{duration}s</span>
           <div className="flex-1" />
 
