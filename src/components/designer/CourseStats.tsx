@@ -2,7 +2,7 @@
 
 import { useCourseStore, getRaceTotalKm } from "@/store/courseStore";
 
-const pill = "bg-white/80 backdrop-blur-sm text-gray-900 h-8 px-3 rounded-lg shadow-lg flex items-center text-sm font-semibold";
+const pill = "bg-white/90 backdrop-blur-sm text-gray-900 h-8 px-3 rounded-lg shadow-lg flex items-center text-sm font-semibold whitespace-nowrap";
 
 export function CourseStats() {
   const { courseData, setLaps } = useCourseStore();

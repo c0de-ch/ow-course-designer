@@ -1,0 +1,121 @@
+# Continuous delivery to k8s01. After "Build & Push to GHCR" succeeds on main
+# (it pushes ghcr.io/c0de-ch/ow-course-designer:sha-<short>):
+#   1. publish the Helm chart to oci://ghcr.io/c0de-ch/charts if its version is new
+#   2. push a branch to lab-k8s01-gitops that sets the new image tag; a workflow
+#      there opens the pull request. Merging it deploys via Argo CD.
+name: Publish Chart & Deploy
+
+on:
+  workflow_run:
+    workflows: ["Build & Push to GHCR"]
+    types: [completed]
+    branches: [main]
+
+# A newer run on main cancels an older one, so an older image can never reach
+# the gitops repo after a newer one.
+concurrency:
+  group: publish-chart-main
+  cancel-in-progress: true
+
+env:
+  CHART_PATH: deploy/helm/ow-course-designer
+  CHART_REPO: oci://ghcr.io/c0de-ch/charts
+  GITOPS_REPO: c0de-ch/lab-k8s01-gitops
+  GITOPS_VALUES: apps/ow-course-designer/values.yaml
+  GITOPS_APP: applications/ow-course-designer.yaml
+
+jobs:
+  chart:
+    name: Publish Helm Chart
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: azure/setup-helm@v4
+
+      - name: Login to registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push chart if this version is new
+        id: version
+        run: |
+          version=$(helm show chart "$CHART_PATH" | awk '/^version:/ {print $2}')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if helm show chart "$CHART_REPO/ow-course-designer" --version "$version" >/dev/null 2>&1; then
+            echo "Chart $version already published"
+          else
+            helm lint "$CHART_PATH" -f "$CHART_PATH/ci/test-values.yaml"
+            helm package "$CHART_PATH" -d dist
+            helm push "dist/ow-course-designer-$version.tgz" "$CHART_REPO"
+          fi
+
+  deploy:
+    name: Propose Deploy to k8s01
+    needs: [chart]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Skip unless this is still the head of main
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          HAS_DEPLOY_KEY: ${{ secrets.GITOPS_DEPLOY_KEY != '' }}
+        run: |
+          head=$(gh api "repos/${{ github.repository }}/commits/main" --jq .sha)
+          if [ "$head" != "$SHA" ]; then
+            echo "::notice::main moved on to $head; the newer run deploys instead"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "$HAS_DEPLOY_KEY" != "true" ]; then
+            echo "::warning::GITOPS_DEPLOY_KEY is not set; skipping deploy"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout gitops repo
+        if: steps.latest.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.GITOPS_REPO }}
+          ssh-key: ${{ secrets.GITOPS_DEPLOY_KEY }}
+          path: gitops
+
+      - name: Push a branch with the new image tag
+        if: steps.latest.outputs.skip != 'true'
+        working-directory: gitops
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          CHART_VERSION: ${{ needs.chart.outputs.version }}
+          TITLE: ${{ github.event.workflow_run.display_title }}
+        run: |
+          if [ ! -f "$GITOPS_VALUES" ]; then
+            echo "::warning::$GITOPS_VALUES not found in $GITOPS_REPO; skipping deploy"
+            exit 0
+          fi
+          TAG="sha-${SHA::7}"
+          # sed rather than yq: yq drops blank lines and would reformat the
+          # files in every deploy PR.
+          sed -i -E "s/^(  tag: ).*/\1$TAG/" "$GITOPS_VALUES"
+          # Only the chart source has a numeric targetRevision (the git one is main).
+          sed -i -E "s/^(      targetRevision: )[0-9]+\.[0-9]+\.[0-9]+.*$/\1$CHART_VERSION/" "$GITOPS_APP"
+          if git diff --quiet; then
+            echo "Nothing to deploy: $TAG is already set"
+            exit 0
+          fi
+          git config user.name "ow-course-designer CD"
+          git config user.email "actions@github.com"
+          branch="deploy/ow-course-designer-$TAG"
+          git checkout -b "$branch"
+          git commit -am "Deploy ow-course-designer $TAG" \
+            -m "$TITLE" \
+            -m "https://github.com/${{ github.repository }}/commit/$SHA"
+          git push --force origin "$branch"

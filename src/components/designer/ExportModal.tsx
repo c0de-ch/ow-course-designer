@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { useCourseStore, type ElementType } from "@/store/courseStore";
+import { IconCheck, IconClose, IconFile, IconGlobe, IconImage, IconPin, IconTable } from "@/components/ui/icons";
 
 type ExportFormat = "gpx" | "kml" | "csv" | "pdf" | "png";
 
@@ -9,15 +10,15 @@ interface FormatOption {
   id: ExportFormat;
   label: string;
   description: string;
-  icon: string;
+  icon: React.ReactNode;
 }
 
 const FORMATS: FormatOption[] = [
-  { id: "gpx", label: "GPX", description: "GPS exchange format for navigation apps", icon: "📍" },
-  { id: "kml", label: "KML", description: "Google Earth / Maps format", icon: "🌍" },
-  { id: "csv", label: "Coordinates (CSV)", description: "Spreadsheet with marker positions", icon: "📋" },
-  { id: "pdf", label: "PDF", description: "Printable map document", icon: "📄" },
-  { id: "png", label: "PNG", description: "Map image for presentations", icon: "🖼" },
+  { id: "gpx", label: "GPX", description: "GPS exchange format for navigation apps", icon: <IconPin /> },
+  { id: "kml", label: "KML", description: "Google Earth / Maps format", icon: <IconGlobe /> },
+  { id: "csv", label: "Coordinates (CSV)", description: "Spreadsheet with marker positions", icon: <IconTable /> },
+  { id: "pdf", label: "PDF", description: "Printable map document", icon: <IconFile /> },
+  { id: "png", label: "PNG", description: "Map image for presentations", icon: <IconImage /> },
 ];
 
 const TYPE_LABELS: Record<ElementType, string> = {
@@ -109,13 +110,20 @@ export function ExportModal({ courseId, onClose }: ExportModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-black/50 rounded-2xl shadow-2xl ring-1 ring-white/15 w-full max-w-lg overflow-hidden">
+    <div
+      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onKeyDown={(e) => e.key === "Escape" && onClose()}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="export-title"
+    >
+      <div className="bg-base-100 text-base-content rounded-2xl shadow-2xl ring-1 ring-black/5 w-full max-w-lg overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4">
-          <h3 className="text-lg font-semibold">Export Course</h3>
-          <button onClick={onClose} className="btn btn-sm btn-ghost btn-circle text-base-content/40 hover:text-base-content">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          <h3 id="export-title" className="text-lg font-semibold">Export course</h3>
+          <button onClick={onClose} className="btn btn-sm btn-ghost btn-circle text-base-content/50 hover:text-base-content" aria-label="Close" autoFocus>
+            <IconClose />
           </button>
         </div>
 
@@ -128,24 +136,24 @@ export function ExportModal({ courseId, onClose }: ExportModalProps) {
                 onClick={() => setSelected(fmt.id)}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-100 cursor-pointer ${
                   selected === fmt.id
-                    ? "bg-primary/15 ring-2 ring-primary/50"
-                    : "hover:bg-base-200/60"
+                    ? "bg-sky-50 ring-2 ring-sky-500/60"
+                    : "hover:bg-base-200"
                 }`}
               >
-                <span className="text-lg w-7 text-center shrink-0 opacity-70">{fmt.icon}</span>
-                <div className="min-w-0 flex-1 whitespace-nowrap">
-                  <span className="font-medium text-sm">{fmt.label}</span>
-                  <span className="text-xs text-base-content/45 ml-2">{fmt.description}</span>
+                <span className={`w-7 flex justify-center shrink-0 ${selected === fmt.id ? "text-sky-600" : "text-base-content/50"}`}>{fmt.icon}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-sm">{fmt.label}</div>
+                  <div className="text-xs text-base-content/55">{fmt.description}</div>
                 </div>
                 {selected === fmt.id && (
-                  <svg className="shrink-0 text-primary" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7"/></svg>
+                  <IconCheck size={16} className="shrink-0 text-sky-600" />
                 )}
               </button>
             ))}
           </div>
 
           {error && (
-            <div className="mt-3 bg-error/10 border border-error/20 rounded-lg p-3 text-sm text-error">
+            <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700" role="alert">
               {error}
             </div>
           )}

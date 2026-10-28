@@ -1,0 +1,14 @@
+OW Course Designer {{ include "owcd.imageTag" . }} is installed as {{ include "owcd.fullname" . }}.
+{{- range .Values.httpRoutes }}
+  {{- range .hostnames }}
+  https://{{ . }}
+  {{- end }}
+{{- end }}
+{{- if and (not .Values.httpRoutes) (not .Values.ingress.enabled) }}
+
+No route is configured. Reach the app with:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "owcd.fullname" . }} 3000:{{ .Values.service.port }}
+{{- end }}
+
+The Google Maps key must allow the hostnames above as HTTP referrers
+(Google Cloud console, Credentials, the key's website restrictions).

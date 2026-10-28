@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { randomUUID } from "crypto";
+import { publicAppUrl } from "@/lib/app-url";
 
 const MAX_FLYOVER_BYTES = 100 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["video/webm", "video/mp4"]);
@@ -46,6 +47,6 @@ export async function POST(
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, filename), buffer);
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = publicAppUrl(req);
   return NextResponse.json({ url: `${appUrl}/api/flyover/${filename}` });
 }

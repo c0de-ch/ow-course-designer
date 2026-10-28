@@ -44,6 +44,8 @@ RUN apk add --no-cache \
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+# Next.js binds to $HOSTNAME; containers (Kubernetes) set it to the pod name
+ENV HOSTNAME=0.0.0.0
 ENV OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 ENV OTEL_SERVICE_NAME=ow-course-designer
 

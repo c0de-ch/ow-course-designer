@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
+import { getPublicConfig } from "@/lib/public-config";
 import { CourseData, getBuoySide, getRouteParts, getFinishMidpoint, getMandatoryLaps, getBuoysForLap, getDifferingLaps, parseFreehand, getRaceTotalKm } from "@/store/courseStore";
 import { computeBearing, arcAroundBuoy } from "@/lib/haversine";
 import { getMarkerSvg } from "./markers/markerIcons";
@@ -40,9 +41,9 @@ export function ShareView({ courseData, isPrint, token, flyoverUrl }: Props) {
   const [showFlyover, setShowFlyover] = useState(false);
 
   useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
-    const loader = new Loader({ apiKey, version: "weekly", libraries: ["places"] });
-    loader.load().then(() => setMapsLoaded(true));
+    getPublicConfig()
+      .then(({ mapsApiKey }) => new Loader({ apiKey: mapsApiKey, version: "weekly", libraries: ["places"] }).load())
+      .then(() => setMapsLoaded(true));
   }, []);
 
   useEffect(() => {

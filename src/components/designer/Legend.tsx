@@ -25,7 +25,7 @@ export const ENTRIES: LegendEntry[] = [
   { color: "#EF4444", shape: "circle", label: "Buoy — Swim Left", arrow: "←", types: ["buoy"] },
   { color: "#22C55E", shape: "circle", label: "Buoy — Swim Right", arrow: "→", types: ["buoy"] },
   { color: "#22C55E", shape: "circle", label: "Start", arrow: "▶", types: ["start"] },
-  { color: "#111111", shape: "circle", label: "Finish", arrow: "🏁", types: ["finish", "finish_left", "finish_right", "finish_endpoint"] },
+  { color: "#111111", shape: "circle", label: "Finish", arrow: "F", types: ["finish", "finish_left", "finish_right", "finish_endpoint"] },
   { color: "#EF4444", shape: "rect-pair", label: "Finish Funnel", types: ["finish_funnel_left", "finish_funnel_right"] },
   { color: "#6366F1", shape: "rect-pair", label: "Gate", types: ["gate_left", "gate_right"] },
   { color: "#F97316", shape: "circle", label: "Shore Entry", arrow: "~", types: ["shore_entry"] },

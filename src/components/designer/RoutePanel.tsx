@@ -58,7 +58,7 @@ function FreehandSection({ elements, onDelete }: { elements: CourseElement[]; on
 
   return (
     <>
-      <p className="text-sm font-bold text-base-content/70 uppercase tracking-wide px-2 py-1 mt-2">
+      <p className="side-heading mt-2">
         Drawings
       </p>
       <div className="flex flex-col gap-0.5">
@@ -232,7 +232,7 @@ export function RoutePanel() {
 
   return (
     <div className="p-3 border-t border-base-300">
-      <p className="text-sm font-bold text-base-content/70 uppercase tracking-wide px-2 py-1">
+      <p className="side-heading">
         Route Order
       </p>
       <div className="flex flex-col gap-0.5">

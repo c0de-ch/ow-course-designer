@@ -84,12 +84,11 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-base-200">
-      <div className="card w-full max-w-md shadow-xl bg-base-100">
+      <div className="card w-full max-w-none shadow-2xl bg-base-100">
         <div className="card-body gap-4">
           {step === "request" ? (
             <>
-              <h1 className="card-title text-2xl justify-center">
+              <h1 className="card-title text-2xl justify-center mb-1">
                 Forgot password
               </h1>
               <p className="text-center text-sm text-content2">
@@ -145,7 +144,7 @@ export default function ForgotPasswordPage() {
             </>
           ) : (
             <>
-              <h1 className="card-title text-2xl justify-center">
+              <h1 className="card-title text-2xl justify-center mb-1">
                 Reset password
               </h1>
 
@@ -253,6 +252,5 @@ export default function ForgotPasswordPage() {
           )}
         </div>
       </div>
-    </div>
   );
 }

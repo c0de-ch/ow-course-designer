@@ -109,12 +109,11 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-base-200">
-      <div className="card w-full max-w-md shadow-xl bg-base-100">
+      <div className="card w-full max-w-none shadow-2xl bg-base-100">
         <div className="card-body gap-4">
           {step === "register" ? (
             <>
-              <h1 className="card-title text-2xl justify-center">
+              <h1 className="card-title text-2xl justify-center mb-1">
                 Create account
               </h1>
 
@@ -134,6 +133,7 @@ export default function RegisterPage() {
                   </label>
                   <input
                     id="name"
+                    autoComplete="name"
                     type="text"
                     className={`input input-block${regForm.formState.errors.name ? " input-error" : ""}`}
                     placeholder="Your name"
@@ -153,6 +153,7 @@ export default function RegisterPage() {
                   <input
                     id="email"
                     type="email"
+                    autoComplete="email"
                     className={`input input-block${regForm.formState.errors.email ? " input-error" : ""}`}
                     placeholder="you@example.com"
                     {...regForm.register("email")}
@@ -171,6 +172,7 @@ export default function RegisterPage() {
                   <input
                     id="password"
                     type="password"
+                    autoComplete="new-password"
                     className={`input input-block${regForm.formState.errors.password ? " input-error" : ""}`}
                     placeholder="Min. 8 characters"
                     {...regForm.register("password")}
@@ -189,6 +191,7 @@ export default function RegisterPage() {
                   <input
                     id="confirmPassword"
                     type="password"
+                    autoComplete="new-password"
                     className={`input input-block${regForm.formState.errors.confirmPassword ? " input-error" : ""}`}
                     placeholder="Repeat password"
                     {...regForm.register("confirmPassword")}
@@ -220,7 +223,7 @@ export default function RegisterPage() {
             </>
           ) : (
             <>
-              <h1 className="card-title text-2xl justify-center">
+              <h1 className="card-title text-2xl justify-center mb-1">
                 Verify your email
               </h1>
 
@@ -299,6 +302,5 @@ export default function RegisterPage() {
           )}
         </div>
       </div>
-    </div>
   );
 }

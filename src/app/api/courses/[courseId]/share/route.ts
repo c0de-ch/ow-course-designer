@@ -6,6 +6,7 @@ import { encodeCourseData } from "@/lib/course-encoder";
 import { CourseData } from "@/store/courseStore";
 import { withSpan } from "@/lib/otel/with-span";
 import { logger } from "@/lib/logger";
+import { publicAppUrl } from "@/lib/app-url";
 
 function generateShortCode(): string {
   return crypto.randomBytes(5).toString("base64url").slice(0, 7);
@@ -75,7 +76,7 @@ export async function POST(
         data: { courseId, payload, flyoverUrl, shortCode },
       });
 
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+      const appUrl = publicAppUrl(req);
       return NextResponse.json({
         token: snapshot.token,
         url: `${appUrl}/share/${snapshot.token}`,
