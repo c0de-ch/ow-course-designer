@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { AppHeader } from "@/components/ui/AppHeader";
+import { AppFooter } from "@/components/ui/AppFooter";
 import { IconAlert, IconMap, IconPin, IconPlus, IconTrash } from "@/components/ui/icons";
 
 interface CourseListItem {
@@ -80,10 +81,10 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="min-h-dvh bg-base-200">
+    <div className="min-h-dvh bg-base-200 flex flex-col">
       <AppHeader />
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+      <main className="w-full flex-1 max-w-5xl mx-auto px-4 sm:px-6 py-8">
         <div className="flex items-center justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold">My courses</h1>
@@ -221,6 +222,7 @@ export default function DashboardPage() {
           </ul>
         )}
       </main>
+      <AppFooter />
     </div>
   );
 }

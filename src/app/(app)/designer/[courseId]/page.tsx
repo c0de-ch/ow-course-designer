@@ -7,6 +7,7 @@ import { DesignerCanvas } from "@/components/designer/DesignerCanvas";
 import { ToolPanel } from "@/components/designer/ToolPanel";
 import { RoutePanel } from "@/components/designer/RoutePanel";
 import { ExportPanel } from "@/components/designer/ExportPanel";
+import { VersionTag } from "@/components/ui/VersionTag";
 import Link from "next/link";
 import { IconAlert, IconArrowLeft, IconCheck, IconCloud, IconMenu, IconPencil } from "@/components/ui/icons";
 
@@ -243,6 +244,9 @@ export default function DesignerPage({ params }: Props) {
           <RoutePanel />
           <div className="flex-1" />
           <ExportPanel courseId={courseId} />
+          <p className="px-4 py-2 border-t border-base-300 text-xs text-base-content/50">
+            <VersionTag />
+          </p>
         </aside>
         {sidebarOpen && (
           <div
