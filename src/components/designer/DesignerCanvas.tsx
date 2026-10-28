@@ -13,6 +13,7 @@ import { Legend } from "./Legend";
 import { TOOLS } from "./ToolPanel";
 import { MarkerContextMenu } from "./MarkerContextMenu";
 import { getPublicConfig } from "@/lib/public-config";
+import { MapPerspectiveControl } from "./MapPerspectiveControl";
 import { coursePoints } from "@/lib/course-bounds";
 import { IconAlert } from "@/components/ui/icons";
 
@@ -59,6 +60,7 @@ export function DesignerCanvas() {
   } = useCourseStore();
   const undo = useCourseStore((s) => s.undo);
   const mapCreatedRef = useRef(false);
+  const mapIdRef = useRef<string | null>(null);
 
   // The marker menu is positioned in screen space: close it when the map moves
   useEffect(() => {
@@ -103,8 +105,9 @@ export function DesignerCanvas() {
   // bootstrapped automatically but the rest of the maps library is not.
   useEffect(() => {
     getPublicConfig()
-      .then(({ mapsApiKey }) => {
+      .then(({ mapsApiKey, mapId }) => {
         if (!mapsApiKey) throw new Error("No Google Maps API key is configured.");
+        mapIdRef.current = mapId;
         return new Loader({ apiKey: mapsApiKey, version: "weekly" }).importLibrary("maps");
       })
       .then(() => setMapsLoaded(true))
@@ -132,6 +135,13 @@ export function DesignerCanvas() {
       mapTypeControl: true,
       streetViewControl: false,
       fullscreenControl: true,
+      // A Map ID gives a vector map, which can be tilted and rotated
+      ...(mapIdRef.current && {
+        mapId: mapIdRef.current,
+        renderingType: google.maps.RenderingType.VECTOR,
+        tiltInteractionEnabled: true,
+        headingInteractionEnabled: true,
+      }),
     });
 
     // Sync zoom level back to store so auto-save captures the current view
@@ -783,6 +793,8 @@ export function DesignerCanvas() {
           <CourseStats />
         </div>
       )}
+
+      {map && <MapPerspectiveControl map={map} />}
 
       {/* Race branding overlay */}
       <RaceBranding />
