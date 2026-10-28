@@ -63,12 +63,14 @@ export async function previewFlyover(
 
 async function waitForTiles(map: google.maps.Map): Promise<void> {
   return new Promise<void>((resolve) => {
-    const listener = map.addListener("tilesloaded", () => {
+    const done = () => {
       google.maps.event.removeListener(listener);
+      clearTimeout(timer);
       resolve();
-    });
-    // Fallback timeout in case tiles are already loaded
-    setTimeout(resolve, 300);
+    };
+    const listener = map.addListener("tilesloaded", done);
+    // Fallback timeout in case tiles are already loaded; removes the listener too
+    const timer = setTimeout(done, 300);
   });
 }
 

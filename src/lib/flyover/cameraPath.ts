@@ -57,7 +57,8 @@ function lerpAngle(a: number, b: number, t: number): number {
  * Build camera path using new route semantics:
  * - Path: start → buoy loop × laps → finish
  * - Gates included only on their mandatory laps
- * - Variable pacing: first lap slow, middle laps fast, last lap slow
+ * - Pacing: constant speed through the entry, first and last lap and exit;
+ *   middle laps three times faster
  */
 export function buildCameraPath(
   elements: CourseElement[],
@@ -128,23 +129,18 @@ export function buildCameraPath(
 
   // Include entry/exit in total timing
   const entryDist = lapBoundaries.length > 0 ? cumDist[lapBoundaries[0]] : 0;
-  const exitStart = lapBoundaries.length > 0
-    ? cumDist[lapBoundaries.length < pts.length ? lapBoundaries[lapBoundaries.length - 1] : pts.length - 1]
-    : 0;
 
-  // Assign time weights per lap: first=3, middle=1, last=3
-  const weights: number[] = [];
-  for (let i = 0; i < laps; i++) {
-    if (laps === 1) weights.push(3);
-    else if (i === 0) weights.push(3);
-    else if (i === laps - 1) weights.push(3);
-    else weights.push(1);
-  }
-  // Add entry/exit weights proportional to their distance fraction
-  const totalLapDist = lapDistRanges.reduce((s, r) => s + (r.end - r.start), 0);
-  const entryWeight = totalLapDist > 0 ? (entryDist / totalLapDist) * 3 : 0; // same speed as slow lap
+  // Time is spent in proportion to distance, at one of two speeds: the
+  // entry, the first and the last lap and the exit at the slow speed, the
+  // middle laps three times faster. (Weighting a whole lap, or the entry
+  // against all laps together, made short legs race and long ones crawl.)
+  const SLOW = 3; // time per km, relative
+  const FAST = 1;
+  const lapPace = (i: number) => (laps <= 2 || i === 0 || i === laps - 1 ? SLOW : FAST);
+  const weights = lapDistRanges.map((r, i) => (r.end - r.start) * lapPace(i));
+  const entryWeight = entryDist * SLOW;
   const exitDist = totalDist - (lapDistRanges.length > 0 ? lapDistRanges[lapDistRanges.length - 1].end : 0);
-  const exitWeight = totalLapDist > 0 ? (exitDist / totalLapDist) * 3 : 0;
+  const exitWeight = exitDist * SLOW;
 
   const totalWeight = entryWeight + weights.reduce((s, w) => s + w, 0) + exitWeight;
 
@@ -156,7 +152,7 @@ export function buildCameraPath(
   if (entryDist > 0) {
     paceSegments.push({ distStart: 0, distEnd: entryDist, timeFrac: entryWeight / totalWeight });
   }
-  for (let i = 0; i < laps; i++) {
+  for (let i = 0; i < lapDistRanges.length; i++) {
     paceSegments.push({
       distStart: lapDistRanges[i].start,
       distEnd: lapDistRanges[i].end,
