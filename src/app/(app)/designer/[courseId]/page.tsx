@@ -24,7 +24,8 @@ export default function DesignerPage({ params }: Props) {
   const [courseName, setCourseName] = useState("");
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
-  const [saveError, setSaveError] = useState(false);
+  // null, or why the last save failed
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -102,12 +103,15 @@ export default function DesignerPage({ params }: Props) {
           raceLogo: courseData.raceLogo,
         }),
       });
-      if (!res.ok) throw new Error(String(res.status));
+      if (!res.ok) {
+        setSaveError(`Not saved, the server refused it (${res.status})`);
+        return;
+      }
       setDirty(false);
-      setSaveError(false);
+      setSaveError(null);
       setLastSavedAt(new Date());
     } catch {
-      setSaveError(true);
+      setSaveError("Not saved, check your connection");
     } finally {
       setStatusMessage(null);
       setSaving(false);
@@ -195,7 +199,7 @@ export default function DesignerPage({ params }: Props) {
           aria-live="polite"
         >
           {saveError ? (
-            <><IconAlert size={14} /> Not saved, check your connection</>
+            <><IconAlert size={14} /> {saveError}</>
           ) : saving || statusMessage ? (
             <><span className="loading loading-xs" /> Saving…</>
           ) : isDirty ? (

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { LapEditorModal } from "./LapEditorModal";
 import { CoordinateListModal, formatDegMin } from "./CoordinateListModal";
+import { IconCheck, IconCopy, IconPin } from "@/components/ui/icons";
 import { useCourseStore, CourseElement, ElementType, BuoySide, FINISH_TYPES, getBuoySide, setBuoySideInMeta, parseFreehand } from "@/store/courseStore";
 
 const TYPE_LABELS: Record<ElementType, string> = {
@@ -44,15 +45,17 @@ const GATE_TYPES: ElementType[] = ["gate_left", "gate_right"];
 
 function CoordinateLine({ el }: { el: CourseElement }) {
   const [copied, setCopied] = useState(false);
-  const text = `${el.lat.toFixed(6)}, ${el.lng.toFixed(6)}`;
+  // 5 decimals is about 1 m, as precise as a buoy is placed
+  const text = `${el.lat.toFixed(5)}, ${el.lng.toFixed(5)}`;
   return (
     <div className="ml-8 px-2 py-1">
-      <label className="text-xs text-base-content/60 block mb-1">GPS position</label>
-      <div className="flex items-center gap-2">
-        <div className="flex-1 min-w-0 font-mono text-xs leading-snug">
-          <div className="truncate" title="Decimal degrees (WGS84)">{text}</div>
-          <div className="truncate text-base-content/50" title="Degrees and decimal minutes">
-            {formatDegMin(el.lat, "lat")} {formatDegMin(el.lng, "lng")}
+      <div className="flex items-start gap-1">
+        <div className="flex-1 min-w-0 font-mono text-[11px] leading-snug tabular-nums">
+          <div title="Decimal degrees (WGS84)">{text}</div>
+          <div className="text-base-content/50" title="Degrees and decimal minutes">
+            {formatDegMin(el.lat, "lat")}
+            <br />
+            {formatDegMin(el.lng, "lng")}
           </div>
         </div>
         <button
@@ -63,10 +66,11 @@ function CoordinateLine({ el }: { el: CourseElement }) {
               setTimeout(() => setCopied(false), 1500);
             });
           }}
-          className="btn btn-xs btn-ghost shrink-0"
-          title="Copy latitude, longitude"
+          className="btn btn-xs btn-ghost btn-square shrink-0"
+          title={copied ? "Copied" : "Copy latitude, longitude"}
+          aria-label="Copy latitude, longitude"
         >
-          {copied ? "Copied" : "Copy"}
+          {copied ? <IconCheck size={14} className="text-green-600" /> : <IconCopy size={14} />}
         </button>
       </div>
     </div>
@@ -268,11 +272,11 @@ export function RoutePanel() {
 
   return (
     <div className="p-3 border-t border-base-300">
-      <div className="flex gap-2 mb-3">
+      <div className="flex flex-col gap-1 mb-3">
         {routeElements.some((el) => el.type === "buoy") && (
           <button
             onClick={() => setLapEditorOpen(true)}
-            className="btn btn-sm btn-primary flex-1"
+            className="btn btn-sm btn-primary w-full"
             title="Per lap: skip buoys, change their swim side, and set mandatory gates"
           >
             Edit course
@@ -280,10 +284,10 @@ export function RoutePanel() {
         )}
         <button
           onClick={() => setCoordsOpen(true)}
-          className="btn btn-sm btn-outline flex-1"
+          className="btn btn-xs btn-ghost w-full gap-1 text-base-content/70"
           title="GPS coordinates of every buoy and mark, with CSV / GPX export"
         >
-          GPS coordinates
+          <IconPin size={14} /> GPS coordinates
         </button>
       </div>
       {lapEditorOpen && <LapEditorModal onClose={() => setLapEditorOpen(false)} />}

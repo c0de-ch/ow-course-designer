@@ -34,7 +34,8 @@ const createSchema = z.object({
   name: z.string().min(1).max(200),
   lakeLabel: z.string().optional(),
   lakeLatLng: z.string().optional(),
-  zoomLevel: z.number().int().min(1).max(22).optional(),
+  // Rounded: the vector map reports fractional zoom levels
+  zoomLevel: z.number().min(1).max(22).transform(Math.round).optional(),
 });
 
 export async function POST(req: NextRequest) {

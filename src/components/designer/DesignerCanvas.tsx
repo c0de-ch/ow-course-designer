@@ -146,8 +146,10 @@ export function DesignerCanvas() {
 
     // Sync zoom level back to store so auto-save captures the current view
     m.addListener("idle", () => {
-      const zoom = m.getZoom();
-      if (zoom == null) return;
+      const raw = m.getZoom();
+      if (raw == null) return;
+      // The vector map zooms in fractions; the course stores a whole level
+      const zoom = Math.round(raw);
       const cd = useCourseStore.getState().courseData;
       if (cd.zoomLevel !== zoom) {
         useCourseStore.setState({
