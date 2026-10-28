@@ -15,6 +15,13 @@ jobs:
     runs-on: ubuntu-24.04  # Playwright cannot install Chromium on ubuntu-latest (26.04) yet
     timeout-minutes: 20
 
+    # SMTP sink: registration needs a successful send to reach the code form.
+    services:
+      mailpit:
+        image: axllent/mailpit:v1.27
+        ports:
+          - 1025:1025
+
     env:
       DATABASE_URL: file:./e2e.db
       AUTH_URL: http://localhost:3100
@@ -24,6 +31,8 @@ jobs:
       NEXT_PUBLIC_APP_URL: http://localhost:3100
       NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: e2e-dummy
       E2E_PORT: "3100"
+      SMTP_HOST: localhost
+      SMTP_PORT: "1025"
       CI: "true"
 
     steps:

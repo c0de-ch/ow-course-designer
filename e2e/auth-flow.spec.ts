@@ -31,9 +31,8 @@ test("register → verify → dashboard → settings", async ({ page }) => {
   await page.getByRole("button", { name: /create account/i }).click();
 
   // --- Verify step ----------------------------------------------------
-  // SMTP isn't wired in CI, so pull the code directly from the DB. The
-  // register route still writes the code even when sendVerificationCode
-  // fails, and returns emailSent:false.
+  // The email goes to Mailpit (see playwright.config.ts); reading the code
+  // from the DB is simpler than parsing the message.
   const codeInput = page.getByLabel(/verification code/i);
   await expect(codeInput).toBeVisible();
 

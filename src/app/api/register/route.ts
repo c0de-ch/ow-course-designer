@@ -77,6 +77,8 @@ export async function POST(req: NextRequest) {
     } catch (mailErr) {
       emailSent = false;
       logger.error({ err: mailErr, email }, "Failed to send verification email");
+      // Drop the unsent code so "Resend code" is not held back by the 60 s limit
+      await prisma.emailVerificationCode.deleteMany({ where: { userId } });
     }
 
     return NextResponse.json(
