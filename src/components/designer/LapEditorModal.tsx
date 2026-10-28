@@ -14,6 +14,8 @@ import {
   computeLapRouteKm,
   getRaceTotalKm,
   isGateActiveOnLap,
+  getBuoyNumbers,
+  buoyName as nameOfBuoy,
   START_ID,
   FINISH_ID,
   BuoySide,
@@ -44,9 +46,10 @@ export function LapEditorModal({ onClose }: Props) {
   const parts = getRouteParts(courseData.elements);
   const buoys = parts.buoys;
   const gates = getGates(courseData.elements);
+  const numbers = getBuoyNumbers(courseData.elements);
   const buoyName = (id: string) => {
-    const i = buoys.findIndex((b) => b.id === id);
-    return i < 0 ? "?" : buoys[i].label || `Buoy ${i + 1}`;
+    const b = buoys.find((x) => x.id === id);
+    return b ? nameOfBuoy(b, numbers, buoys) : "?";
   };
   const fromOptions = [
     ...(parts.start ? [{ id: START_ID, name: "Start" }] : []),
@@ -74,7 +77,7 @@ export function LapEditorModal({ onClose }: Props) {
       aria-modal="true"
       aria-labelledby="lap-editor-title"
     >
-      <div className="bg-base-100 text-base-content rounded-2xl shadow-2xl ring-1 ring-black/5 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="bg-base-100 text-base-content rounded-2xl shadow-2xl ring-1 ring-black/5 w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-4 px-6 pt-5 pb-3">
           <h3 id="lap-editor-title" className="text-lg font-semibold">Edit course</h3>
@@ -116,14 +119,19 @@ export function LapEditorModal({ onClose }: Props) {
         {buoys.length === 0 ? (
           <p className="px-6 pb-6 text-sm text-base-content/60">Place some buoys first.</p>
         ) : (
-          <div className="overflow-auto px-6 pb-5">
-            <table className="text-sm border-separate border-spacing-0">
+          <div className="overflow-y-auto overflow-x-hidden px-6 pb-5">
+            <table className="w-full table-fixed text-sm border-separate border-spacing-0">
+              <colgroup>
+                {/* The names (and gate dropdowns) give way on narrow screens so the laps never scroll sideways */}
+                <col className={gates.length > 0 ? "w-[17rem] lg:w-[23rem]" : "w-[9rem] lg:w-[13rem]"} />
+                {lapNumbers.map((lap) => <col key={lap} />)}
+              </colgroup>
               <thead>
                 <tr>
-                  <th className="sticky left-0 top-0 z-20 bg-base-100 text-left font-medium text-base-content/60 py-2 pr-4">Buoy</th>
+                  <th className="sticky top-0 z-20 bg-base-100 text-left font-medium text-base-content/60 py-2 pr-4">Buoy</th>
                   {lapNumbers.map((lap) => (
-                    <th key={lap} className="sticky top-0 z-10 bg-base-100 px-1 py-2 font-medium min-w-[7.5rem]">
-                      <div className="flex items-center justify-center gap-1">
+                    <th key={lap} className="sticky top-0 z-10 bg-base-100 px-1 py-2 font-medium">
+                      <div className="flex flex-wrap items-center justify-center gap-x-1">
                         Lap {lap}
                         {buoys.some((b) => getBuoyLapRule(b.metadata, lap) !== "default") && (
                           <button
@@ -140,12 +148,12 @@ export function LapEditorModal({ onClose }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {buoys.map((b, i) => {
+                {buoys.map((b) => {
                   const baseSide = getBuoySide(b.metadata);
                   return (
                     <tr key={b.id}>
-                      <th scope="row" className="sticky left-0 z-10 bg-base-100 text-left font-normal py-1 pr-4 whitespace-nowrap">
-                        <span className="font-medium">{b.label || `Buoy ${i + 1}`}</span>
+                      <th scope="row" className="text-left font-normal py-1 pr-4 truncate">
+                        <span className="font-medium">{buoyName(b.id)}</span>
                         <span className="ml-2 text-xs text-base-content/50">{SIDE_LABEL[baseSide]}</span>
                       </th>
                       {lapNumbers.map((lap) => {
@@ -162,7 +170,7 @@ export function LapEditorModal({ onClose }: Props) {
                               value={rule}
                               onChange={(e) => setBuoyLapRule(b.id, lap, e.target.value as LapRule)}
                               className={`w-full h-8 rounded-lg border border-gray-200 px-1.5 text-xs ${tone}`}
-                              aria-label={`${b.label || `Buoy ${i + 1}`}, lap ${lap}`}
+                              aria-label={`${buoyName(b.id)}, lap ${lap}`}
                             >
                               <option value="default">✓ {SIDE_LABEL[baseSide]}</option>
                               <option value="skip">Skip</option>
@@ -181,31 +189,29 @@ export function LapEditorModal({ onClose }: Props) {
               </tbody>
               {gates.length > 0 && (
                 <tbody>
-                  <tr>
-                    <th colSpan={laps + 1} className="sticky left-0 bg-base-100 text-left font-medium text-base-content/60 pt-4 pb-1">
-                      Gates
-                    </th>
-                  </tr>
                   {gates.map((g, gi) => (
                     <tr key={g.id}>
-                      <th scope="row" className="sticky left-0 z-10 bg-base-100 text-left font-normal py-1 pr-4 align-top">
-                        <div className="font-medium whitespace-nowrap">{g.left.label || `Gate ${gi + 1}`}</div>
-                        <div className="flex items-center gap-1 mt-1 text-xs text-base-content/60 whitespace-nowrap">
+                      <th scope="row" className={`text-left font-normal py-1 pr-4 align-top ${gi === 0 ? "pt-4" : ""}`}>
+                        <div className="flex items-center gap-1.5 text-xs">
                           <select
                             value={g.from ?? ""}
                             onChange={(e) => setGateBetween(g.id, e.target.value || null, g.to)}
-                            className="h-7 rounded-md border border-gray-200 bg-white text-gray-900 px-1 text-xs"
+                            className="h-8 min-w-0 flex-1 rounded-lg border border-gray-200 bg-white text-gray-900 px-1 text-xs"
                             aria-label={`Gate ${gi + 1}: after`}
+                            title="The mark swum just before the gate"
                           >
                             <option value="">after…</option>
                             {fromOptions.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                           </select>
-                          <span>→ gate →</span>
+                          <span className="shrink-0 whitespace-nowrap text-sm text-base-content/60">
+                            → <span className="font-medium text-base-content">{g.left.label || `Gate ${gi + 1}`}</span> →
+                          </span>
                           <select
                             value={g.to ?? ""}
                             onChange={(e) => setGateBetween(g.id, g.from, e.target.value || null)}
-                            className="h-7 rounded-md border border-gray-200 bg-white text-gray-900 px-1 text-xs"
+                            className="h-8 min-w-0 flex-1 rounded-lg border border-gray-200 bg-white text-gray-900 px-1 text-xs"
                             aria-label={`Gate ${gi + 1}: before`}
+                            title="The mark swum just after the gate: after the lap's last buoy, the next lap's first buoy ends the lap at the gate"
                           >
                             <option value="">before…</option>
                             {toOptions.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
@@ -221,7 +227,7 @@ export function LapEditorModal({ onClose }: Props) {
                             ? "bg-red-50 text-red-800 ring-1 ring-red-300"
                             : "bg-indigo-50 text-indigo-900 ring-1 ring-indigo-300";
                         return (
-                          <td key={lap} className="px-1 py-1 align-top">
+                          <td key={lap} className={`px-1 py-1 align-top ${gi === 0 ? "pt-4" : ""}`}>
                             <select
                               value={active ? "default" : "skip"}
                               onChange={(e) => setBuoyLapRule(g.id, lap, e.target.value as LapRule)}
@@ -232,7 +238,7 @@ export function LapEditorModal({ onClose }: Props) {
                               <option value="default">✓ Mandatory</option>
                               <option value="skip">Not swum</option>
                             </select>
-                            {problem && <div className="mt-0.5 text-[11px] leading-tight text-error max-w-[7.5rem]">{problem}</div>}
+                            {problem && <div className="mt-0.5 text-[11px] leading-tight text-error">{problem}</div>}
                           </td>
                         );
                       })}
@@ -242,17 +248,17 @@ export function LapEditorModal({ onClose }: Props) {
               )}
               <tfoot>
                 <tr>
-                  <th className="sticky left-0 z-10 bg-base-100 text-left font-medium text-base-content/60 pt-3 pr-4">Loop</th>
+                  <th className="text-left font-medium text-base-content/60 pt-3 pr-4">Lap distance</th>
                   {lapNumbers.map((lap) => {
                     const count = getBuoysForLap(buoys, lap).length;
-                    const gateCount = getLapLoop(courseData.elements, lap).filter((p) => p.kind === "gate").length;
+                    const gateCount = getLapLoop(courseData.elements, lap, laps).filter((p) => p.kind === "gate").length;
                     return (
                       <td key={lap} className="pt-3 px-1 text-center text-xs tabular-nums">
                         {count < 2 ? (
                           <span className="text-error">Needs 2+ buoys</span>
                         ) : (
                           <>
-                            <div className="font-medium">{computeLapRouteKm(courseData.elements, lap).toFixed(2)} km</div>
+                            <div className="font-medium">{computeLapRouteKm(courseData.elements, lap, laps).toFixed(2)} km</div>
                             <div className="text-base-content/50">
                               {count} buoys{gateCount > 0 && ` · ${gateCount} gate${gateCount > 1 ? "s" : ""}`}
                             </div>
@@ -270,7 +276,8 @@ export function LapEditorModal({ onClose }: Props) {
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-base-200">
           <p className="text-xs text-base-content/50">
             Laps that differ get their own colour on the map. A gate between two buoys is only passed on laps
-            where they follow each other. Ctrl+Z undoes a change.
+            where they follow each other; set after a lap&apos;s last buoy and before the first buoy of the next lap,
+            it ends the lap. Ctrl+Z undoes a change.
           </p>
           <button onClick={onClose} className="btn btn-primary btn-sm">Done</button>
         </div>

@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { LapEditorModal } from "./LapEditorModal";
 import { CoordinateListModal, formatDegMin } from "./CoordinateListModal";
 import { IconCheck, IconCopy, IconPin } from "@/components/ui/icons";
-import { useCourseStore, CourseElement, ElementType, BuoySide, FINISH_TYPES, getBuoySide, setBuoySideInMeta, parseFreehand } from "@/store/courseStore";
+import { useCourseStore, CourseElement, ElementType, BuoySide, FINISH_TYPES, getBuoySide, setBuoySideInMeta, parseFreehand, getBuoyNumbers, getBuoyColor, setBuoyColorInMeta, defaultBuoyColor, BUOY_COLORS } from "@/store/courseStore";
 
 const TYPE_LABELS: Record<ElementType, string> = {
   buoy: "Buoy",
@@ -73,6 +73,54 @@ function CoordinateLine({ el }: { el: CourseElement }) {
           {copied ? <IconCheck size={14} className="text-green-600" /> : <IconCopy size={14} />}
         </button>
       </div>
+    </div>
+  );
+}
+
+function BuoyColorPicker({ el, buoys }: { el: CourseElement; buoys: CourseElement[] }) {
+  const { updateElementMeta } = useCourseStore();
+  const chosen = getBuoyColor(el.metadata);
+  const swatch = "w-6 h-6 rounded-full border border-black/20 shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
+  const ring = (on: boolean) => (on ? " ring-2 ring-offset-1 ring-primary" : "");
+  return (
+    <div className="ml-8 px-2 py-1">
+      <label className="text-xs text-base-content/60 block mb-1">Colour</label>
+      <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Buoy colour">
+        <button
+          onClick={(e) => { e.stopPropagation(); updateElementMeta(el.id, setBuoyColorInMeta(el.metadata, null)); }}
+          className={swatch + ring(chosen === null) + " relative overflow-hidden"}
+          style={{ background: `linear-gradient(135deg, #EF4444 0 50%, #22C55E 50% 100%)` }}
+          title="By swim side: red left, green right, yellow directional"
+          role="radio"
+          aria-checked={chosen === null}
+          aria-label="By swim side"
+        />
+        {BUOY_COLORS.map((c) => (
+          <button
+            key={c.value}
+            onClick={(e) => { e.stopPropagation(); updateElementMeta(el.id, setBuoyColorInMeta(el.metadata, c.value)); }}
+            className={swatch + ring(chosen === c.value)}
+            style={{ background: c.value }}
+            title={c.name}
+            role="radio"
+            aria-checked={chosen === c.value}
+            aria-label={c.name}
+          />
+        ))}
+      </div>
+      {buoys.length > 1 && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            buoys.forEach((b) => {
+              if (b.id !== el.id && getBuoyColor(b.metadata) !== chosen) updateElementMeta(b.id, setBuoyColorInMeta(b.metadata, chosen));
+            });
+          }}
+          className="mt-1.5 text-xs text-sky-700 hover:underline"
+        >
+          Use {chosen ? "this colour" : "colours by side"} for all buoys
+        </button>
+      )}
     </div>
   );
 }
@@ -163,6 +211,7 @@ export function RoutePanel() {
   const routeElements = [...courseData.elements]
     .filter((el) => el.type !== "rescue_zone" && el.type !== "freehand")
     .sort((a, b) => a.order - b.order);
+  const buoyNumbers = getBuoyNumbers(courseData.elements);
 
   const rescueElements = courseData.elements.filter(
     (el) => el.type === "rescue_zone"
@@ -298,6 +347,7 @@ export function RoutePanel() {
       <div className="flex flex-col gap-0.5">
         {routeElements.map((el, i) => {
           const isSelected = selectedElementId === el.id;
+          const buoyNo = buoyNumbers.get(el.id);
           const elShowLaps = isSelected && LAPS_TYPES.includes(el.type);
           const elShowSide = isSelected && el.type === "buoy";
           const elShowGate = isSelected && GATE_TYPES.includes(el.type);
@@ -324,10 +374,14 @@ export function RoutePanel() {
                 </span>
                 <span
                   className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ background: TYPE_COLORS[el.type] }}
+                  style={{
+                    background: el.type === "buoy"
+                      ? getBuoyColor(el.metadata) ?? defaultBuoyColor(getBuoySide(el.metadata))
+                      : TYPE_COLORS[el.type],
+                  }}
                 />
                 <span className="truncate text-base-content/80">
-                  {TYPE_LABELS[el.type]}
+                  {el.type === "buoy" ? (buoyNo ? `Buoy ${buoyNo}` : "Directional") : TYPE_LABELS[el.type]}
                 </span>
                 {el.label && (
                   <span className="truncate text-base-content/50 text-xs">
@@ -379,12 +433,13 @@ export function RoutePanel() {
                     )}
                     className="select select-sm select-bordered w-full"
                   >
-                    <option value="left">{"\u2190"} Left (Red)</option>
-                    <option value="directional">{"\u2191"} Directional (Yellow)</option>
-                    <option value="right">{"\u2192"} Right (Green)</option>
+                    <option value="left">{"\u2190"} Left (turn buoy)</option>
+                    <option value="directional">{"\u2191"} Directional (no number)</option>
+                    <option value="right">{"\u2192"} Right (turn buoy)</option>
                   </select>
                 </div>
               )}
+              {elShowSide && <BuoyColorPicker el={el} buoys={routeElements.filter((b) => b.type === "buoy")} />}
             </div>
           );
         })}

@@ -11,7 +11,8 @@ export function createMarkerOverlay(
   onSelect: OnSelect,
   onDragEnd: OnDragEnd,
   routeIndex: number | null = null,
-  onContextMenu?: OnContextMenu
+  onContextMenu?: OnContextMenu,
+  buoyNumber?: number
 ): google.maps.OverlayView {
   class Impl extends google.maps.OverlayView {
     private el: CourseElement;
@@ -29,7 +30,7 @@ export function createMarkerOverlay(
       div.style.userSelect = "none";
       div.style.cursor = "grab";
       div.style.transform = "translate(-50%, -50%)";
-      div.innerHTML = getMarkerSvg(this.el.type, isSelected, this.el.metadata);
+      div.innerHTML = getMarkerSvg(this.el.type, isSelected, this.el.metadata, buoyNumber);
 
       if (this.el.label) {
         div.appendChild(createMarkerLabel(this.el.label));

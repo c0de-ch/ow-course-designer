@@ -85,9 +85,15 @@ const manual: ManualEntry[] = [
 3. **Second click**: places the right gate post
 4. The gate appears as a line between the two posts
 
-To make a gate part of the swim route, open **Edit course** (top of the Route Order panel): set between which two marks the gate is passed (a buoy, Start or Finish) and the laps it is mandatory on. A gate between two buoys is passed on laps where those buoys follow each other.
+To make a gate part of the swim route, open **Edit course** (top of the Route Order panel): set between which two marks the gate is passed (a buoy, Start or Finish) and the laps it is mandatory on. A gate between two buoys is passed on laps where those buoys follow each other. To end each lap at a gate, set it after the lap's last buoy and before the first buoy of the next lap (the next lap starts there), and mark it Not swum on the last lap, which heads for the finish.
 
 Gates are useful for marking swim course entry/exit points or turning points.`,
+  },
+  {
+    keywords: ["buoy", "number", "numbered", "colour", "color"],
+    answer: `Turn buoys (rounded left or right) are numbered 1, 2, 3… on the map, in route order. Directional buoys only guide the swimmers and get no number.
+
+To change a buoy's colour, select it in Route Order and pick a colour under **Colour**. The first swatch colours it by swim side (red left, green right, yellow directional). **Use this colour for all buoys** applies the choice to every buoy.`,
   },
   {
     keywords: ["rescue", "zone", "safety"],

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
-import { useCourseStore, BuoySide, getRouteParts, getDifferingLaps, parseFreehand, getRaceTotalKm } from "@/store/courseStore";
+import { useCourseStore, BuoySide, getRouteParts, getDifferingLaps, parseFreehand, getRaceTotalKm, getBuoyNumbers } from "@/store/courseStore";
 import { createMarkerOverlay } from "./MarkerOverlay";
 import { LakeSearch } from "./LakeSearch";
 import { getToolCursorSvg } from "./markers/markerIcons";
@@ -187,6 +187,7 @@ export function DesignerCanvas() {
       .filter((el) => el.type !== "rescue_zone" && el.type !== "freehand")
       .sort((a, b) => a.order - b.order);
     const idxMap = new Map(routeOrder.map((el, i) => [el.id, i + 1]));
+    const buoyNumbers = getBuoyNumbers(courseData.elements);
 
     // Add fresh overlays (skip freehand — rendered as polylines below)
     courseData.elements.filter((el) => el.type !== "freehand").forEach((el) => {
@@ -201,7 +202,8 @@ export function DesignerCanvas() {
           if (!rect) return;
           setSelectedElementId(id);
           setMarkerMenu({ id, x: clientX - rect.left, y: clientY - rect.top });
-        }
+        },
+        buoyNumbers.get(el.id)
       );
       overlay.setMap(map);
       overlaysRef.current.push(overlay);

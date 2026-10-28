@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { useCourseStore, type CourseElement, type ElementType } from "@/store/courseStore";
+import { useCourseStore, getBuoyNumbers, buoyName, type CourseElement, type ElementType } from "@/store/courseStore";
 import { buildGpx } from "@/lib/gpx-builder";
 import { IconClose } from "@/components/ui/icons";
 
@@ -39,13 +39,13 @@ interface CoordinateRow {
   name: string;
 }
 
-/** Point marks in route order; buoys numbered like the course editor (Buoy 1, 2, …) */
+/** Point marks in route order; turn buoys numbered like on the map (Buoy 1, 2, …) */
 export function coordinateRows(elements: CourseElement[]): CoordinateRow[] {
-  let buoyNo = 0;
+  const numbers = getBuoyNumbers(elements);
   return [...elements]
     .filter((el) => el.type !== "rescue_zone" && el.type !== "freehand")
     .sort((a, b) => a.order - b.order)
-    .map((el) => ({ el, name: el.type === "buoy" ? `Buoy ${++buoyNo}` : TYPE_LABELS[el.type] }));
+    .map((el) => ({ el, name: el.type === "buoy" ? buoyName({ ...el, label: null }, numbers, elements) : TYPE_LABELS[el.type] }));
 }
 
 function download(filename: string, content: string, type: string) {

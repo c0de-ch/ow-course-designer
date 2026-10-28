@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
 import { getPublicConfig } from "@/lib/public-config";
-import { CourseData, getRouteParts, getDifferingLaps, parseFreehand, getRaceTotalKm } from "@/store/courseStore";
+import { CourseData, getRouteParts, getDifferingLaps, parseFreehand, getRaceTotalKm, getBuoyNumbers } from "@/store/courseStore";
 import { coursePoints } from "@/lib/course-bounds";
 import { buildRouteLines, RouteLine } from "@/lib/route-geometry";
 import { createMarkerLabel, getMarkerSvg } from "./markers/markerIcons";
@@ -101,8 +101,9 @@ export function ShareView({ courseData, isPrint, token, flyoverUrl }: Props) {
 
     // Place overlays (all visible elements except rescue zones and freehand)
     const visibleElements = courseData.elements.filter((el) => el.type !== "rescue_zone" && el.type !== "freehand");
+    const buoyNumbers = getBuoyNumbers(courseData.elements);
     visibleElements.forEach((el) => {
-      const svgHtml = getMarkerSvg(el.type, false, el.metadata);
+      const svgHtml = getMarkerSvg(el.type, false, el.metadata, buoyNumbers.get(el.id));
       const tempDiv = document.createElement("div");
       tempDiv.innerHTML = svgHtml;
       const svgEl = tempDiv.firstElementChild as SVGSVGElement;
