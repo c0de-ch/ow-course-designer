@@ -49,7 +49,8 @@ const putSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   lakeLabel: z.string().nullable().optional(),
   lakeLatLng: z.string().nullable().optional(),
-  zoomLevel: z.number().int().min(1).max(22).optional(),
+  // Rounded: the vector map reports fractional zoom levels
+  zoomLevel: z.number().min(1).max(22).transform(Math.round).optional(),
   distanceKm: z.number().nullable().optional(),
   laps: z.number().int().min(1).max(100).optional(),
   raceLabel: z.string().nullable().optional(),
