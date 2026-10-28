@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
 import { getPublicConfig } from "@/lib/public-config";
-import { CourseData, getRouteParts, getDifferingLaps, parseFreehand, getRaceTotalKm, getBuoyNumbers } from "@/store/courseStore";
+import { CourseData, getRouteParts, parseFreehand, getRaceTotalKm, getBuoyNumbers } from "@/store/courseStore";
 import { coursePoints } from "@/lib/course-bounds";
-import { buildRouteLines, RouteLine } from "@/lib/route-geometry";
+import { buildRouteLines, getLegendLaps, RouteLine } from "@/lib/route-geometry";
 import { createMarkerLabel, getMarkerSvg } from "./markers/markerIcons";
 import { RaceBranding } from "./RaceBranding";
 import { Legend, ENTRIES as LEGEND_ENTRIES } from "./Legend";
@@ -266,7 +266,7 @@ export function ShareView({ courseData, isPrint, token, flyoverUrl }: Props) {
   }, [mapsLoaded, courseData, isPrint]);
 
   // Compute lap colors for legend (only laps that differ from the standard route)
-  const lapColorsForLegend = getDifferingLaps(courseData.elements, courseData.laps ?? 1);
+  const lapColorsForLegend = getLegendLaps(courseData.elements, courseData.laps ?? 1);
 
   // Compute freehand entries for legend (only labeled drawings)
   const freehandEntriesForLegend = courseData.elements
