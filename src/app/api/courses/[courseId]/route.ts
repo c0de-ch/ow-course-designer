@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { withSpan } from "@/lib/otel/with-span";
+import { assignElementIds } from "@/lib/element-ids";
+import { randomUUID } from "crypto";
 
 async function getCourseForUser(courseId: string, userId: string) {
   return prisma.course.findFirst({
@@ -80,6 +82,18 @@ export async function PUT(
       const body = await req.json();
       const data = putSchema.parse(body);
 
+      // Keep the element ids (gates refer to their buoys by id), except ids another course already uses
+      const sentIds = (data.elements ?? []).flatMap((el) => (el.id ? [el.id] : []));
+      const takenElsewhere = sentIds.length
+        ? new Set(
+            (await prisma.courseElement.findMany({
+              where: { id: { in: sentIds }, courseId: { not: courseId } },
+              select: { id: true },
+            })).map((el) => el.id)
+          )
+        : new Set<string>();
+      const elements = data.elements && assignElementIds(data.elements, takenElsewhere, randomUUID);
+
       await prisma.$transaction(async (tx) => {
         await tx.course.update({
           where: { id: courseId },
@@ -95,11 +109,12 @@ export async function PUT(
           },
         });
 
-        if (data.elements !== undefined) {
+        if (elements !== undefined) {
           await tx.courseElement.deleteMany({ where: { courseId } });
-          if (data.elements.length > 0) {
+          if (elements.length > 0) {
             await tx.courseElement.createMany({
-              data: data.elements.map((el) => ({
+              data: elements.map((el) => ({
+                id: el.id,
                 courseId,
                 type: el.type,
                 lat: el.lat,
