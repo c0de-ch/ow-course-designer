@@ -304,23 +304,32 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
     const frames = framesRef.current;
     const interval = 1000 / 30;
 
-    for (let i = 0; i < frames.length; i++) {
+    // Follow the clock rather than counting frames: when the map is slow to
+    // draw, frames are skipped instead of the whole preview slowing down
+    const startedAt = performance.now();
+    let shown = -1;
+    for (;;) {
       if (abortRef.current) break;
-      const f = frames[i];
-      try {
-        map.moveCamera({
-          center: f.center,
-          heading: f.heading,
-          tilt: f.tilt,
-          zoom: f.zoom,
-        });
-      } catch {
-        map.setCenter(f.center);
-        map.setZoom(f.zoom);
+      const i = Math.floor((performance.now() - startedAt) / interval);
+      if (i >= frames.length) break;
+      if (i !== shown) {
+        shown = i;
+        const f = frames[i];
+        try {
+          map.moveCamera({
+            center: f.center,
+            heading: f.heading,
+            tilt: f.tilt,
+            zoom: f.zoom,
+          });
+        } catch {
+          map.setCenter(f.center);
+          map.setZoom(f.zoom);
+        }
+        moveSwimmer(f.swimmerPos);
+        setProgress(i / frames.length);
       }
-      moveSwimmer(f.swimmerPos);
-      setProgress(i / frames.length);
-      await new Promise((r) => setTimeout(r, interval));
+      await new Promise((r) => requestAnimationFrame(r));
     }
     setProgress(1);
     hideSwimmer();
@@ -393,11 +402,14 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
 
         // Wait for tiles
         await new Promise<void>((resolve) => {
-          const listener = map.addListener("tilesloaded", () => {
+          const done = () => {
             google.maps.event.removeListener(listener);
+            clearTimeout(timer);
             resolve();
-          });
-          setTimeout(resolve, 300);
+          };
+          const listener = map.addListener("tilesloaded", done);
+          // Give up after 300 ms, removing the listener so they don't pile up frame after frame
+          const timer = setTimeout(done, 300);
         });
 
         await new Promise((r) => setTimeout(r, 1000 / fps));
