@@ -7,16 +7,16 @@ import { buildCameraPath, type CameraFrame } from "@/lib/flyover/cameraPath";
 import { computeBearing, arcAroundBuoy } from "@/lib/haversine";
 import { getLoadedPublicConfig } from "@/lib/public-config";
 
-const SWIMMER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 32 32" fill="#F97316" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <circle cx="6" cy="15" r="2.2" fill="#F97316" stroke="white"/>
-  <path d="M9 14.5c2-1 4-3.5 6-5l2.5 2.5c-2 2-4 3.5-6 4.5" fill="#F97316" stroke="white" stroke-width="2"/>
-  <path d="M9 14.5l-1.5 3c-.5 1-.2 1.5.5 1.5h3" fill="#F97316" stroke="white" stroke-width="2"/>
-  <path d="M15 11.5l4-1.5 4.5-.5" fill="none" stroke="white" stroke-width="2"/>
-  <path d="M11 19l3.5.5 4-1" fill="none" stroke="white" stroke-width="2"/>
-  <path d="M18.5 18.5l3.5 2 4 1" fill="none" stroke="white" stroke-width="2"/>
-  <path d="M11.5 16l-2 4.5-3 3" fill="none" stroke="white" stroke-width="2"/>
-  <path d="M12 17.5l-1 4 1 3.5" fill="none" stroke="white" stroke-width="2"/>
-</svg>`;
+// Swimmer marker: an orange dot with a white ring and a light halo. On a
+// vector map it is a map symbol, because the recording captures only the map
+// canvas; on a raster map (no recording) it is an HTML overlay, which redraws
+// cleanly while the camera moves.
+const SWIMMER_COLOR = "#F97316";
+const TRAIL_POINTS = 45;
+const SWIMMER_DOT_CSS =
+  "position:absolute;transform:translate(-50%,-50%);pointer-events:none;display:none;" +
+  `width:22px;height:22px;border-radius:50%;background:${SWIMMER_COLOR};border:3px solid #fff;` +
+  "box-shadow:0 0 0 9px rgba(255,255,255,0.35),0 2px 6px rgba(0,0,0,0.5);";
 
 interface FlyoverModalProps {
   onClose: () => void;
@@ -37,6 +37,7 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
   const [error, setError] = useState<string | null>(null);
   const framesRef = useRef<CameraFrame[]>([]);
   const abortRef = useRef(false);
+  const swimmerTrailRef = useRef<google.maps.Polyline | null>(null);
   const swimmerOverlayRef = useRef<google.maps.OverlayView | null>(null);
   const swimmerDivRef = useRef<HTMLDivElement | null>(null);
   const swimmerPosRef = useRef<google.maps.LatLng | null>(null);
@@ -222,13 +223,45 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
         overlay.setMap(map);
       });
 
-      // Create swimmer overlay
+      // Swimmer: a short wake line ending in an orange dot with a white ring
+      // and a light halo (symbols keep their pixel size at every zoom)
+      swimmerTrailRef.current = new google.maps.Polyline({
+        map,
+        visible: false,
+        geodesic: true,
+        strokeColor: SWIMMER_COLOR,
+        strokeOpacity: 0.6,
+        strokeWeight: 5,
+        zIndex: 900,
+        icons: [
+          {
+            offset: "100%",
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 20,
+              fillColor: "#FFFFFF",
+              fillOpacity: 0.35,
+              strokeWeight: 0,
+            },
+          },
+          {
+            offset: "100%",
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 10,
+              fillColor: SWIMMER_COLOR,
+              fillOpacity: 1,
+              strokeColor: "#FFFFFF",
+              strokeWeight: 3,
+            },
+          },
+        ],
+      });
+
       const swimmerOverlay = new google.maps.OverlayView();
       swimmerOverlay.onAdd = function () {
         const div = document.createElement("div");
-        div.style.cssText =
-          "position:absolute;transform:translate(-50%,-50%);pointer-events:none;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6));display:none;";
-        div.innerHTML = SWIMMER_SVG;
+        div.style.cssText = SWIMMER_DOT_CSS;
         this.getPanes()!.overlayLayer.appendChild(div);
         swimmerDivRef.current = div;
       };
@@ -266,17 +299,28 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
   }, [mapReady, duration]);
 
   const moveSwimmer = useCallback((pos: google.maps.LatLngLiteral) => {
-    swimmerPosRef.current = new google.maps.LatLng(pos.lat, pos.lng);
-    if (swimmerDivRef.current) {
-      swimmerDivRef.current.style.display = "block";
+    const point = new google.maps.LatLng(pos.lat, pos.lng);
+    if (mapRef.current?.getRenderingType() !== google.maps.RenderingType.VECTOR) {
+      swimmerPosRef.current = point;
+      if (swimmerDivRef.current) swimmerDivRef.current.style.display = "block";
+      swimmerOverlayRef.current?.draw();
+      return;
     }
-    swimmerOverlayRef.current?.draw();
+
+    const trail = swimmerTrailRef.current;
+    if (!trail) return;
+    const path = trail.getPath();
+    // The dot sits at the end of the line, which needs two points
+    if (path.getLength() === 0) path.push(point);
+    path.push(point);
+    while (path.getLength() > TRAIL_POINTS) path.removeAt(0);
+    trail.setVisible(true);
   }, []);
 
   const hideSwimmer = useCallback(() => {
-    if (swimmerDivRef.current) {
-      swimmerDivRef.current.style.display = "none";
-    }
+    swimmerTrailRef.current?.setVisible(false);
+    swimmerTrailRef.current?.getPath().clear();
+    if (swimmerDivRef.current) swimmerDivRef.current.style.display = "none";
   }, []);
 
   const handlePreview = useCallback(async () => {
