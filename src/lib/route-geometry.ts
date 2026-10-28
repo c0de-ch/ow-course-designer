@@ -24,7 +24,7 @@ export interface RouteLines {
   /** The standard loop (blue) */
   loop: RouteLine | null;
   /** Segments where a lap leaves the standard loop, in that lap's colour */
-  lapSegments: RouteLine[];
+  lapSegments: (RouteLine & { lap: number })[];
   /** Start → first waypoint of lap 1 */
   startLine: RouteLine | null;
   /** Last buoy of the last lap → finish */
@@ -58,7 +58,7 @@ export function buildRouteLines(elements: CourseElement[], laps: number): RouteL
   const base = getBaseLoop(elements, laps);
 
   let loop: RouteLine | null = null;
-  const lapSegments: RouteLine[] = [];
+  const lapSegments: (RouteLine & { lap: number })[] = [];
   if (base.length >= 2) {
     loop = {
       path: [...base.flatMap((_, i) => arcAt(base, i)), ...arcAt(base, 0)],
@@ -84,6 +84,7 @@ export function buildRouteLines(elements: CourseElement[], laps: number): RouteL
           path: [...arcBetween(prevOf(j), a, nextOf(j)), ...arcBetween(prevOf(j + 1), b, nextOf(j + 1))],
           color: dl.color,
           arrows: [[pt(a), pt(b)]],
+          lap: dl.lap,
         });
       }
     }
@@ -117,4 +118,15 @@ export function buildRouteLines(elements: CourseElement[], laps: number): RouteL
   }
 
   return { loop, lapSegments, startLine, finishLine };
+}
+
+/**
+ * The laps the legend lists: those with a line of their own colour on the map.
+ * A lap can differ from the standard loop and still swim only legs of it (a
+ * lap that skips a buoy may run along the loop to where the next lap starts),
+ * and then nothing is drawn in its colour.
+ */
+export function getLegendLaps(elements: CourseElement[], laps: number): { lap: number; color: string }[] {
+  const drawn = new Set(buildRouteLines(elements, laps).lapSegments.map((s) => s.lap));
+  return getDifferingLaps(elements, laps).filter((dl) => drawn.has(dl.lap));
 }
