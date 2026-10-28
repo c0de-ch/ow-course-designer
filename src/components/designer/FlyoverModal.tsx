@@ -38,6 +38,8 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
   const framesRef = useRef<CameraFrame[]>([]);
   const abortRef = useRef(false);
   const swimmerTrailRef = useRef<google.maps.Polyline | null>(null);
+  /** The wake's points, newest last; handed to the line whole on every frame */
+  const trailPointsRef = useRef<google.maps.LatLng[]>([]);
   const swimmerOverlayRef = useRef<google.maps.OverlayView | null>(null);
   const swimmerDivRef = useRef<HTMLDivElement | null>(null);
   const swimmerPosRef = useRef<google.maps.LatLng | null>(null);
@@ -278,17 +280,21 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
 
     const trail = swimmerTrailRef.current;
     if (!trail) return;
-    const path = trail.getPath();
+    // Replace the whole path in one update. Editing it point by point (push,
+    // then removeAt) redrew the dot several times per frame, and the vector
+    // map left some of those in-between halos behind as white dots.
+    const prev = trailPointsRef.current;
     // The dot sits at the end of the line, which needs two points
-    if (path.getLength() === 0) path.push(point);
-    path.push(point);
-    while (path.getLength() > TRAIL_POINTS) path.removeAt(0);
-    trail.setVisible(true);
+    const points = [...(prev.length === 0 ? [point] : prev.slice(-(TRAIL_POINTS - 1))), point];
+    trailPointsRef.current = points;
+    trail.setPath(points);
+    if (!trail.getVisible()) trail.setVisible(true);
   }, []);
 
   const hideSwimmer = useCallback(() => {
     swimmerTrailRef.current?.setVisible(false);
-    swimmerTrailRef.current?.getPath().clear();
+    swimmerTrailRef.current?.setPath([]);
+    trailPointsRef.current = [];
     if (swimmerDivRef.current) swimmerDivRef.current.style.display = "none";
   }, []);
 
@@ -297,6 +303,7 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
     if (!map || framesRef.current.length === 0) return;
     abortRef.current = false;
     setStatus("previewing");
+    trailPointsRef.current = []; // start a fresh wake
     setProgress(0);
     setError(null);
     setStatusMsg("Previewing...");
@@ -341,6 +348,7 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
     const map = mapRef.current;
     if (!map || framesRef.current.length === 0) return;
     setStatus("recording");
+    trailPointsRef.current = []; // start a fresh wake
     setProgress(0);
     setError(null);
     setStatusMsg("Preparing recording...");
