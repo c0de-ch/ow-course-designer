@@ -13,6 +13,12 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Shown in the footer and /api/health; set by CI (ghcr.yml)
+ARG APP_VERSION=
+ARG GIT_SHA=
+ENV APP_VERSION=$APP_VERSION
+ENV GIT_SHA=$GIT_SHA
+
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATABASE_PROVIDER=sqlite
 ENV DATABASE_URL=file:./dev.db

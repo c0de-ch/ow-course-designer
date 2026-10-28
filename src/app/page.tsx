@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { BrandMark } from "@/components/ui/BrandMark";
+import { VersionTag } from "@/components/ui/VersionTag";
 import { IconDownload, IconLink, IconMap } from "@/components/ui/icons";
 
 const FEATURES = [
@@ -87,7 +88,7 @@ export default async function LandingPage() {
       </main>
 
       <footer className="relative z-10 text-center text-white/45 text-xs py-5">
-        &copy; {new Date().getFullYear()} c0de.ch &middot; v{process.env.NEXT_PUBLIC_APP_VERSION}
+        &copy; {new Date().getFullYear()} c0de.ch &middot; <VersionTag />
       </footer>
     </div>
   );

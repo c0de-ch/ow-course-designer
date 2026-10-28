@@ -1,4 +1,5 @@
 import { BrandMark } from "@/components/ui/BrandMark";
+import { VersionTag } from "@/components/ui/VersionTag";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -12,7 +13,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <div className="relative z-10 w-full max-w-md flex flex-col items-center gap-6">
         <BrandMark tone="light" />
         {children}
-        <p className="text-xs text-white/50">v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
+        <p className="text-xs text-white/50">&copy; {new Date().getFullYear()} c0de.ch &middot; <VersionTag /></p>
       </div>
     </div>
   );
