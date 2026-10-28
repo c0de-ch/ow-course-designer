@@ -41,12 +41,8 @@ async function deleteCourse(id: string): Promise<void> {
 /** Race photo used for the side images and, blurred, as the water behind the glass */
 const PHOTO = "/hero-bg.webp";
 
-/** Crops of the photo (1920×1440): zoom + focus point */
-const CROPS = {
-  buoy: { backgroundSize: "185%", backgroundPosition: "36% 52%" },
-  pack: { backgroundSize: "300%", backgroundPosition: "66% 62%" },
-  boats: { backgroundSize: "420%", backgroundPosition: "76% 38%" },
-} satisfies Record<string, React.CSSProperties>;
+/** Focus point of the side image on the photo (1920×1440): the turn buoy */
+const BUOY_FOCUS = { backgroundPosition: "36% 52%" } satisfies React.CSSProperties;
 
 const relativeTime = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 
@@ -108,12 +104,13 @@ export default function DashboardPage() {
       <AppHeader glass />
 
       <div className="w-full flex-1 max-w-7xl mx-auto px-3 sm:px-6 pt-5 pb-8 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-6">
-        {/* Side images, cut from the race photo: the turn buoy, the pack, the safety boats */}
+        {/* Side image, cut from the race photo: swimmers rounding the turn buoy. A zoomed
+            banner on phones; filling the tall side column on large screens */}
         <aside className="mb-5 lg:mb-0">
-          <div className="lg:sticky lg:top-24 lg:h-[calc(100dvh-8rem)] lg:min-h-[30rem] grid gap-3 lg:grid-rows-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="lg:sticky lg:top-24 lg:h-[calc(100dvh-8rem)] lg:min-h-[30rem]">
             <div
-              className="relative h-44 sm:h-56 lg:h-auto rounded-[28px] overflow-hidden bg-cover ring-1 ring-white/40 shadow-xl shadow-[#0C3440]/20"
-              style={{ backgroundImage: `url('${PHOTO}')`, ...CROPS.buoy }}
+              className="relative h-44 sm:h-56 lg:h-full rounded-[28px] overflow-hidden bg-no-repeat bg-[length:185%] lg:bg-cover ring-1 ring-white/40 shadow-xl shadow-[#0C3440]/20"
+              style={{ backgroundImage: `url('${PHOTO}')`, ...BUOY_FOCUS }}
               role="img"
               aria-label="Swimmers rounding turn buoy 3 in a race"
             >
@@ -124,18 +121,6 @@ export default function DashboardPage() {
                   {countLabel && <p className="mt-2 text-sm text-white/80">{countLabel}</p>}
                 </div>
               </div>
-            </div>
-            <div className="hidden lg:grid grid-cols-2 gap-3">
-              <div
-                className="rounded-[20px] bg-cover ring-1 ring-white/40 shadow-lg shadow-[#0C3440]/20"
-                style={{ backgroundImage: `url('${PHOTO}')`, ...CROPS.pack }}
-                aria-hidden="true"
-              />
-              <div
-                className="rounded-[20px] bg-cover ring-1 ring-white/40 shadow-lg shadow-[#0C3440]/20"
-                style={{ backgroundImage: `url('${PHOTO}')`, ...CROPS.boats }}
-                aria-hidden="true"
-              />
             </div>
           </div>
         </aside>
