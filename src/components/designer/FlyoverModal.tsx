@@ -115,8 +115,11 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
       map.fitBounds(bounds);
     }
 
-    // Wait for map to be fully loaded
-    map.addListener("idle", () => {
+    // Draw the scene once, when the map is first ready. Not on every "idle":
+    // the map goes idle again and again while the camera flies, and each time
+    // a new swimmer (and another copy of the route and markers) was drawn
+    // while the old swimmer stayed behind as a white dot.
+    google.maps.event.addListenerOnce(map, "idle", () => {
       setMapReady(true);
 
       // Draw route polylines (solid buoy loop + dashed entry/exit)
@@ -197,9 +200,9 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
       });
 
       // Swimmer: a short wake line and an orange dot with a white ring and a
-      // light halo. Circles, not symbols on the line: the vector map left
-      // moving line symbols behind as white dots. Sizes are in metres, which
-      // matches the old pixel size at the flyover's fixed zoom (18).
+      // light halo, drawn on the map (not as HTML) so they show in recordings.
+      // Sizes are in metres, about the old pixel size at the flyover's fixed
+      // zoom (18).
       swimmerTrailRef.current = new google.maps.Polyline({
         map,
         visible: false,
