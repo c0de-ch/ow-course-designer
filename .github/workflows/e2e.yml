@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Playwright cannot install Chromium on ubuntu-latest (26.04) yet
     timeout-minutes: 20
 
     env:
