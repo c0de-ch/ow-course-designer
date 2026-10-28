@@ -1,0 +1,14 @@
+apiVersion: v2
+name: ow-course-designer
+description: OW Course Designer, a web app for designing open-water swim courses
+type: application
+# Bump for every chart change; CI publishes each new version to
+# oci://ghcr.io/c0de-ch/charts/ow-course-designer.
+version: 0.1.0
+# The image tag used when values.image.tag is empty.
+appVersion: "latest"
+home: https://github.com/c0de-ch/ow-course-designer
+sources:
+  - https://github.com/c0de-ch/ow-course-designer
+maintainers:
+  - name: c0de-ch

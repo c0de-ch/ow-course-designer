@@ -3,19 +3,109 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  color-scheme: light;
+  --base-100: 255 255 255;
+  --base-200: 243 245 248;
+  --base-300: 222 226 232;
+  --base-content: 23 28 38;
+  --brand: 2 132 199;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: rgb(var(--base-100));
+  color: rgb(var(--base-content));
+  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/*
+ * Component classes the UI uses that Ripple UI does not ship
+ * (spinners, toggles, card parts, form helpers).
+ */
+@layer components {
+  .loading {
+    display: inline-block;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 9999px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    color: rgb(var(--brand));
+    animation: ow-spin 0.7s linear infinite;
+    vertical-align: middle;
+    flex-shrink: 0;
+  }
+  .loading-xs { width: 0.875rem; height: 0.875rem; }
+  .loading-sm { width: 1.125rem; height: 1.125rem; }
+  .loading-lg { width: 2.5rem; height: 2.5rem; border-width: 3px; }
+  .loading-dots { border-style: dotted; }
+
+  .toggle {
+    appearance: none;
+    position: relative;
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 1.375rem;
+    border-radius: 9999px;
+    background: rgb(var(--base-300));
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+  .toggle::after {
+    content: "";
+    position: absolute;
+    top: 0.1875rem;
+    left: 0.1875rem;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 9999px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+    transition: transform 0.15s ease;
+  }
+  .toggle:checked { background: rgb(var(--brand)); }
+  .toggle:checked::after { transform: translateX(1.125rem); }
+  .toggle:focus-visible { outline: 2px solid rgb(var(--brand)); outline-offset: 2px; }
+  .toggle-xs { width: 2rem; height: 1.125rem; }
+  .toggle-xs::after { width: 0.75rem; height: 0.75rem; }
+  .toggle-xs:checked::after { transform: translateX(0.875rem); }
+
+  .card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    font-size: 1.125rem;
+    line-height: 1.4;
+  }
+  .card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .form-helper {
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    margin-top: 0.125rem;
+  }
+  .input-bordered,
+  .select-bordered {
+    border: 1px solid rgb(var(--base-300));
+  }
+
+  .side-heading {
+    @apply px-2 py-1 text-xs font-semibold uppercase tracking-wider text-base-content/50;
+  }
+
+  .kbd-hint {
+    @apply inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded border border-base-300 bg-base-200 text-[10px] font-mono text-base-content/60;
+  }
+}
+
+@keyframes ow-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading { animation-duration: 2s; }
 }

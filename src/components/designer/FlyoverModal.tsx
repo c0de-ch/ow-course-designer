@@ -5,6 +5,7 @@ import { useCourseStore, CourseData, getRaceTotalKm, getRouteParts, getFinishMid
 import { getMarkerSvg } from "./markers/markerIcons";
 import { buildCameraPath, type CameraFrame } from "@/lib/flyover/cameraPath";
 import { computeBearing, arcAroundBuoy } from "@/lib/haversine";
+import { getLoadedPublicConfig } from "@/lib/public-config";
 
 const SWIMMER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 32 32" fill="#F97316" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <circle cx="6" cy="15" r="2.2" fill="#F97316" stroke="white"/>
@@ -40,7 +41,7 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
 
   const storeCourseData = useCourseStore((s) => s.courseData);
   const courseData = courseDataProp ?? storeCourseData;
-  const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || undefined;
+  const mapId = getLoadedPublicConfig().mapId || undefined;
 
   // Auto-compute route distance and duration (~6s/100m, clamped 10-120s)
   const { totalKm, avgLoopKm } = getRaceTotalKm(courseData);

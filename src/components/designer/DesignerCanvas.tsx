@@ -10,11 +10,15 @@ import { computeBearing, offsetPointPerpendicular, arcAroundBuoy } from "@/lib/h
 import { CourseStats } from "./CourseStats";
 import { RaceBranding } from "./RaceBranding";
 import { Legend } from "./Legend";
+import { TOOLS } from "./ToolPanel";
+import { getPublicConfig } from "@/lib/public-config";
+import { IconAlert } from "@/components/ui/icons";
 
 export function DesignerCanvas() {
   const mapDivRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [mapsLoaded, setMapsLoaded] = useState(false);
+  const [mapsError, setMapsError] = useState<string | null>(null);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const lapPolylinesRef = useRef<google.maps.Polyline[]>([]);
   const arrowPolylinesRef = useRef<google.maps.Polyline[]>([]);
@@ -53,13 +57,30 @@ export function DesignerCanvas() {
   const undo = useCourseStore((s) => s.undo);
   const mapCreatedRef = useRef(false);
 
-  // Ctrl+Z undo
+  // Keyboard: Ctrl+Z undo, tool shortcuts, Esc back to Select, Del removes the selection
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         undo();
+        return;
       }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const state = useCourseStore.getState();
+      if (e.key === "Escape") {
+        state.setActiveTool("select");
+        state.setSelectedElementId(null);
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && state.selectedElementId) {
+        e.preventDefault();
+        state.removeElement(state.selectedElementId);
+        return;
+      }
+      const tool = TOOLS.find((t) => t.key === e.key.toLowerCase());
+      if (tool) state.setActiveTool(tool.id);
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -70,9 +91,13 @@ export function DesignerCanvas() {
   // before we try to use them.  With the new async bootstrap, Map is
   // bootstrapped automatically but the rest of the maps library is not.
   useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
-    const loader = new Loader({ apiKey, version: "weekly" });
-    loader.importLibrary("maps").then(() => setMapsLoaded(true));
+    getPublicConfig()
+      .then(({ mapsApiKey }) => {
+        if (!mapsApiKey) throw new Error("No Google Maps API key is configured.");
+        return new Loader({ apiKey: mapsApiKey, version: "weekly" }).importLibrary("maps");
+      })
+      .then(() => setMapsLoaded(true))
+      .catch((err: Error) => setMapsError(err.message || "Google Maps could not be loaded."));
   }, []);
 
   // Init map (guarded to only create once)
@@ -725,7 +750,7 @@ export function DesignerCanvas() {
 
       {/* Top toolbar */}
       {mapsLoaded && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-3 z-10">
+        <div className="absolute top-3 left-3 right-3 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 flex flex-wrap items-center gap-2 sm:gap-3 z-10">
           <LakeSearch map={map} />
           <CourseStats />
         </div>
@@ -745,26 +770,33 @@ export function DesignerCanvas() {
           .map((fh) => ({ label: fh.label, color: fh.color }))}
       />
 
-      {/* Gate / finish channel hint */}
-      {activeTool === "gate" && gateFirstClick && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-base-100 rounded shadow px-4 py-2 text-sm z-10">
-          Click to place the second gate post
-        </div>
-      )}
-      {/* Freehand hint */}
-      {activeTool === "freehand" && !pendingFreehand && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-base-100 rounded shadow px-4 py-2 text-sm z-10">
-          Click and drag to draw
-        </div>
-      )}
-      {/* Rescue zone hint */}
-      {activeTool === "rescue_zone" && rescueZonePoints.length > 0 && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-base-100 rounded shadow px-4 py-2 text-sm z-10">
-          {rescueZonePoints.length < 3
-            ? `${rescueZonePoints.length} point${rescueZonePoints.length > 1 ? "s" : ""} — keep clicking to add more`
-            : "Double-click to close the polygon"}
-        </div>
-      )}
+      {/* What a click does with the active tool */}
+      {mapsLoaded && !pendingBuoy && !pendingFreehand && (() => {
+        let hint: string | null = null;
+        if (activeTool === "gate" && gateFirstClick) hint = "Now click to place the right gate post";
+        else if (activeTool === "rescue_zone" && rescueZonePoints.length > 0)
+          hint = rescueZonePoints.length < 3
+            ? `${rescueZonePoints.length} corner${rescueZonePoints.length > 1 ? "s" : ""} placed. Keep clicking to add more`
+            : "Double-click to close the rescue zone";
+        else if (activeTool !== "select") hint = TOOLS.find((t) => t.id === activeTool)?.hint ?? null;
+        else if (courseData.elements.length === 0)
+          hint = "Search for your lake above, then pick a tool on the left to start placing markers";
+        if (!hint) return null;
+        return (
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex items-center gap-3 bg-gray-900/85 text-white backdrop-blur-sm rounded-full shadow-lg pl-4 pr-2 py-1.5 text-sm max-w-[calc(100%-2rem)]">
+            <span className="truncate">{hint}</span>
+            {activeTool !== "select" && (
+              <button
+                onClick={() => setActiveTool("select")}
+                className="shrink-0 rounded-full bg-white/15 hover:bg-white/25 px-2.5 py-0.5 text-xs"
+                title="Stop placing (Esc)"
+              >
+                Done <span className="opacity-60">Esc</span>
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Buoy side picker */}
       {pendingBuoy && (
@@ -814,7 +846,7 @@ export function DesignerCanvas() {
       {(() => {
         const { totalKm, avgLoopKm } = getRaceTotalKm(courseData);
         return totalKm > 0 ? (
-          <div className="absolute bottom-3 right-28 bg-white/80 backdrop-blur-sm text-gray-900 px-5 py-3 rounded-lg z-10 text-right shadow-lg">
+          <div className="hidden sm:block absolute bottom-3 right-28 bg-white/80 backdrop-blur-sm text-gray-900 px-5 py-3 rounded-lg z-10 text-right shadow-lg">
             {courseData.laps > 1 ? (
               <>
                 <div className="text-2xl font-bold">{totalKm.toFixed(2)} km total</div>
@@ -829,7 +861,21 @@ export function DesignerCanvas() {
 
       {!mapsLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-base-200">
-          <span className="loading loading-spinner loading-lg" />
+          {mapsError ? (
+            <div className="max-w-sm text-center px-6">
+              <IconAlert size={32} className="mx-auto text-red-500 mb-3" />
+              <p className="font-semibold mb-1">The map could not be loaded</p>
+              <p className="text-sm text-base-content/60 mb-4">{mapsError}</p>
+              <button onClick={() => window.location.reload()} className="btn btn-sm btn-primary">
+                Try again
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 text-sm text-base-content/60">
+              <span className="loading loading-spinner loading-lg" />
+              Loading map…
+            </div>
+          )}
         </div>
       )}
     </div>

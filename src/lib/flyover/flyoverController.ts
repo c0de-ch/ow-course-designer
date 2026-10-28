@@ -105,7 +105,7 @@ export async function recordFlyover(
     throw new Error(
       "Cannot access map canvas for recording. " +
       "A valid Vector Map ID (from Google Cloud Console) is required. " +
-      "Set NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID in your .env file."
+      "Set GOOGLE_MAPS_MAP_ID in the server environment."
     );
   }
 

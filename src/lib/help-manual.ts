@@ -19,8 +19,8 @@ const manual: ManualEntry[] = [
     keywords: ["create", "new", "course", "start", "begin"],
     answer: `To create a new course:
 
-1. Go to the **Dashboard** (log in first if needed)
-2. Click the **"+ New Course"** button
+1. Go to **My courses** (log in first if needed)
+2. Click **"New course"**, give it a name and click **"Create and open"**
 3. You'll be taken to the designer where you can start adding markers
 4. Use the search bar to find your body of water
 5. Select tools from the left sidebar to start placing markers`,
@@ -50,30 +50,31 @@ const manual: ManualEntry[] = [
     answer: `To delete a marker:
 
 1. Select the **Select tool** from the left sidebar
-2. **Right-click** on the marker you want to delete
-3. The marker will be removed and the route distance will update`,
+2. **Right-click** on the marker you want to delete, or click it and press **Delete** (or use **"Delete selected"** in the sidebar)
+3. The marker will be removed and the route distance will update
+4. Press **Ctrl+Z** (Cmd+Z on Mac) to undo`,
   },
   {
     keywords: ["export", "pdf", "png", "download", "print"],
     answer: `To export your course:
 
-1. In the designer, find the **Export** section in the left sidebar
-2. Choose your format:
+1. In the designer, click **"Export (PDF, GPX, …)"** under **Share & export** at the bottom of the left sidebar
+2. Choose your format in the dialog:
    - **PDF** — printable document with map and course details
    - **PNG** — image file of the course map
    - **GPX** — GPS exchange format (for GPS devices and apps)
    - **KML** — for Google Earth
-3. Click the export button and the file will download`,
+   - **Coordinates (CSV)** — marker positions for a spreadsheet
+3. Click **Export** and the file will download`,
   },
   {
     keywords: ["share", "link", "public", "url"],
     answer: `To share your course:
 
-1. In the designer, find the **Share** button in the Export section
-2. Click **"Create Share Link"**
-3. A public URL will be generated — copy and send it to anyone
-4. The shared view is **read-only** — viewers can see the map and export
-5. The share link captures a snapshot, so later edits won't affect it`,
+1. In the designer, click **"Share link"** under **Share & export** at the bottom of the left sidebar
+2. A public URL is generated — click **"Copy Link"** and send it to anyone
+3. The shared view is **read-only** — viewers can see the map and export
+4. The share link captures a snapshot, so later edits won't affect it: share again after changes`,
   },
   {
     keywords: ["gate", "how", "create"],
@@ -119,7 +120,7 @@ Use rescue zones to mark safety boat positions or emergency meeting points.`,
     keywords: ["flyover", "video", "record", "animation"],
     answer: `Flyover videos let you create an animated tour of your course:
 
-1. In the Export section, find the **Flyover** option
+1. Under **Share & export** in the left sidebar, click **"Flyover Video"**
 2. Click to open the flyover modal
 3. The video is recorded by animating the map camera along your route
 4. Once recorded, you can upload it to attach to your shared course link
@@ -167,10 +168,22 @@ They're useful for marking beach start/finish locations or water entry points.`,
     keywords: ["freehand", "draw", "line", "shape"],
     answer: `The freehand tool lets you draw custom shapes on the map:
 
-1. Select the **Freehand tool** from the left sidebar
+1. Select the **Draw tool** from the left sidebar
 2. Click and drag on the map to draw
 3. Release to finish the shape
 4. You can customize the label and color of freehand drawings`,
+  },
+  {
+    keywords: ["keyboard", "shortcut", "keys", "hotkey"],
+    answer: `Keyboard shortcuts in the designer:
+
+- **V** Select, **B** Buoy, **S** Start, **F** Finish, **G** Gate
+- **E** Shore Entry, **R** Rescue Zone, **P** Feeding Platform, **D** Draw
+- **Esc** stops placing and goes back to Select
+- **Delete** removes the selected marker
+- **Ctrl+Z** (Cmd+Z on Mac) undoes the last change
+
+Each tool shows its key in the sidebar.`,
   },
 ];
 

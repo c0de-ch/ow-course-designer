@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { encodeCourseData } from "@/lib/course-encoder";
 import { withBrowser, ExportQueueTimeoutError } from "@/lib/puppeteer";
 import type { CourseData, ElementType } from "@/store/courseStore";
+import { internalAppUrl } from "@/lib/app-url";
 
 type CourseWithElements = Course & { elements: DbCourseElement[] };
 
@@ -42,12 +43,12 @@ export async function createSnapshotPrintUrl(
       shortCode: crypto.randomBytes(5).toString("base64url").slice(0, 7),
     },
   });
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = internalAppUrl();
   return `${appUrl}/share/${snapshot.token}?print=1`;
 }
 
 export function shareTokenPrintUrl(token: string): string {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = internalAppUrl();
   return `${appUrl}/share/${token}?print=1`;
 }
 

@@ -1,0 +1,137 @@
+# Default values for the ow-course-designer chart.
+
+image:
+  repository: ghcr.io/c0de-ch/ow-course-designer
+  # Defaults to the chart's appVersion. CD sets this to the sha-<commit> tag.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Public base URL, e.g. https://ow-course-designer.example.com. Used for share
+# links and as AUTH_URL. Leave empty when the app answers on several hostnames:
+# it then takes the URL from each request (AUTH_TRUST_HOST is on).
+appUrl: ""
+
+# Non-secret settings, passed to the app as environment variables.
+config:
+  SMTP_SECURE: "false"
+
+# Secret settings. Keys the app reads:
+#   AUTH_SECRET (required), GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_MAP_ID,
+#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET (Google sign-in, optional),
+#   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM (sign-up codes),
+#   ADMIN_EMAIL.
+# Either point at an existing Secret (a SealedSecret in GitOps) or let the
+# chart create one from `create` (only for quick installs: the values end up
+# in the release history).
+secrets:
+  existingSecret: ""
+  create: {}
+  #  AUTH_SECRET: ""
+  #  GOOGLE_MAPS_API_KEY: ""
+
+# Extra environment variables, as a list of EnvVar objects.
+extraEnv: []
+
+# The SQLite database and the uploaded flyover videos live on this volume,
+# mounted at /app/data. SQLite allows one writer, so the app runs as a single
+# replica and updates use the Recreate strategy.
+persistence:
+  enabled: true
+  existingClaim: ""
+  size: 5Gi
+  storageClass: ""        # empty: the cluster default
+  accessModes: [ReadWriteOnce]
+  annotations: {}
+  labels: {}
+
+# Applies pending Prisma migrations in an init container before the app starts.
+migrate:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 384Mi
+
+service:
+  type: ClusterIP
+  port: 80
+
+# Gateway API routes. Each entry becomes one HTTPRoute.
+httpRoutes: []
+#  - name: lan
+#    parentRefs:
+#      - name: lan
+#        namespace: gateway
+#    hostnames:
+#      - ow-course-designer.example.com
+#    # TLS ends in front of the Gateway: tell the app the client used https.
+#    forwardedProtoHttps: true
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: ow-course-designer.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+# PDF and PNG exports run a headless Chromium inside the pod.
+resources:
+  requests:
+    cpu: 100m
+    memory: 384Mi
+  limits:
+    memory: 1Gi
+
+# Chromium needs a larger /dev/shm than the container default of 64 MiB.
+shmSize: 256Mi
+
+probes:
+  path: /api/health
+  startup:
+    periodSeconds: 5
+    failureThreshold: 24
+  liveness:
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

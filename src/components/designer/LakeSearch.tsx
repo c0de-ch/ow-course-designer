@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useCourseStore } from "@/store/courseStore";
+import { IconSearch } from "@/components/ui/icons";
 
 interface LakeSearchProps {
   map: google.maps.Map | null;
@@ -193,8 +194,9 @@ export function LakeSearch({ map }: LakeSearchProps) {
         onClick={handleExpand}
         className="bg-white/80 backdrop-blur-sm rounded-lg shadow-lg h-8 w-8 flex items-center justify-center text-gray-700 hover:bg-white transition-colors"
         title="Search for a lake or region"
+        aria-label="Search for a lake or region"
       >
-        🔍
+        <IconSearch size={16} />
       </button>
     );
   }
@@ -218,7 +220,7 @@ export function LakeSearch({ map }: LakeSearchProps) {
           title="Search"
           className="h-8 w-8 flex items-center justify-center text-gray-700 hover:bg-white/60 disabled:opacity-40 transition-colors"
         >
-          🔍
+          <IconSearch size={16} />
         </button>
       </div>
       {showDropdown && suggestions.length > 0 && (

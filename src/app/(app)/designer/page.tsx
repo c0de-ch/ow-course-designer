@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useCourseStore } from "@/store/courseStore";
 
 export default function NewDesignerPage() {
@@ -18,7 +19,7 @@ export default function NewDesignerPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     })
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((course) => {
         router.replace(`/designer/${course.id}`);
       })
@@ -30,15 +31,17 @@ export default function NewDesignerPage() {
 
   if (!creating) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <p className="text-error">Failed to create course. Please try again.</p>
+      <div className="flex flex-col items-center justify-center gap-4 h-dvh bg-base-200 text-center px-6">
+        <p className="font-medium">The course could not be created.</p>
+        <Link href="/dashboard" className="btn btn-primary btn-sm">Back to my courses</Link>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center justify-center h-screen">
+    <div className="flex flex-col items-center justify-center gap-3 h-dvh bg-base-200 text-sm text-base-content/60">
       <span className="loading loading-spinner loading-lg" />
+      Creating course…
     </div>
   );
 }

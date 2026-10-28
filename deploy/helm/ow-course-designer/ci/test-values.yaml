@@ -1,0 +1,17 @@
+appUrl: https://ow-course-designer.example.com
+secrets:
+  create:
+    AUTH_SECRET: test-secret
+    GOOGLE_MAPS_API_KEY: test-key
+httpRoutes:
+  - name: lan
+    parentRefs:
+      - name: lan
+        namespace: gateway
+    hostnames: [ow-course-designer.example.com]
+    forwardedProtoHttps: true
+ingress:
+  enabled: true
+persistence:
+  labels:
+    c0de.ch/example: "true"

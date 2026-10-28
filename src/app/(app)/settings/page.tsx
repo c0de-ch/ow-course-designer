@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
+import { AppHeader } from "@/components/ui/AppHeader";
+import { IconArrowLeft } from "@/components/ui/icons";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -90,30 +92,13 @@ export default function SettingsPage() {
   const email = session?.user?.email ?? "";
 
   return (
-    <div className="min-h-screen bg-base-200">
-      <div className="navbar bg-base-100 shadow">
-        <div className="flex-1">
-          <Link href="/dashboard" className="btn btn-ghost text-xl font-bold">
-            OW Course Designer
-          </Link>
-        </div>
-        <div className="flex-none gap-2">
-          <span className="text-sm hidden sm:block">
-            {session?.user?.name ?? email}
-          </span>
-          <button
-            onClick={() => signOut({ callbackUrl: "/" })}
-            className="btn btn-ghost btn-sm"
-          >
-            Sign out
-          </button>
-        </div>
-      </div>
+    <div className="min-h-dvh bg-base-200">
+      <AppHeader />
 
-      <main className="max-w-2xl mx-auto p-6 flex flex-col gap-6">
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="btn btn-ghost btn-sm">
-            ← Dashboard
+      <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8 flex flex-col gap-6">
+        <div>
+          <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-sm text-base-content/60 hover:text-base-content mb-2">
+            <IconArrowLeft size={14} /> My courses
           </Link>
           <h1 className="text-2xl font-bold">Account settings</h1>
         </div>
