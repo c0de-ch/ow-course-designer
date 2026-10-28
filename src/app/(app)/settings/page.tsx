@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { AppHeader } from "@/components/ui/AppHeader";
+import { AppFooter } from "@/components/ui/AppFooter";
 import { IconArrowLeft } from "@/components/ui/icons";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -92,10 +93,10 @@ export default function SettingsPage() {
   const email = session?.user?.email ?? "";
 
   return (
-    <div className="min-h-dvh bg-base-200">
+    <div className="min-h-dvh bg-base-200 flex flex-col">
       <AppHeader />
 
-      <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8 flex flex-col gap-6">
+      <main className="w-full flex-1 max-w-2xl mx-auto px-4 sm:px-6 py-8 flex flex-col gap-6">
         <div>
           <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-sm text-base-content/60 hover:text-base-content mb-2">
             <IconArrowLeft size={14} /> My courses
@@ -252,6 +253,7 @@ export default function SettingsPage() {
           </div>
         </div>
       </main>
+      <AppFooter />
     </div>
   );
 }
