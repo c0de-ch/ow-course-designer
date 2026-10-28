@@ -1,6 +1,8 @@
 import { redirect, notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 
+export const metadata = { robots: { index: false, follow: false } };
+
 interface Props {
   params: Promise<{ code: string }>;
 }
