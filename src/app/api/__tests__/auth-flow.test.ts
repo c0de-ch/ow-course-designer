@@ -162,6 +162,9 @@ describe("POST /api/register", () => {
 
     expect(res.status).toBe(201);
     expect(body.emailSent).toBe(false);
+    expect(mockPrisma.emailVerificationCode.deleteMany).toHaveBeenLastCalledWith({
+      where: { userId: "user-1" },
+    });
     expect(body.email).toBe("test@example.com");
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ err: expect.any(Error) }),
@@ -415,7 +418,11 @@ describe("POST /api/resend-code", () => {
     const body = await res.json();
 
     expect(res.status).toBe(502);
-    expect(body.error).toContain("Failed to send email");
+    expect(body.error).toContain("could not send the email");
+    // The unsent code is dropped so a retry is not throttled
+    expect(mockPrisma.emailVerificationCode.deleteMany).toHaveBeenLastCalledWith({
+      where: { userId: "user-1" },
+    });
   });
 
   it("returns 429 when rate limited (code sent within 60s)", async () => {

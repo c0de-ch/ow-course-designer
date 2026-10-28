@@ -65,7 +65,9 @@ export async function POST(req: NextRequest) {
       await sendPasswordResetCode(email, code);
     } catch (mailErr) {
       logger.error({ err: mailErr, email }, "Failed to send password reset email");
-      // Still return the generic message — the user can retry.
+      // Still return the generic message (no account enumeration), but drop
+      // the unsent code so a retry is not throttled.
+      await prisma.passwordResetCode.deleteMany({ where: { userId: user.id } });
     }
 
     return genericResponse;

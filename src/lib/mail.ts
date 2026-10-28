@@ -12,8 +12,12 @@ function getTransport() {
   });
 }
 
-const fromAddress =
-  process.env.SMTP_FROM ?? "OW Course Designer <noreply@example.com>";
+// Env files often quote the value (SMTP_FROM="Name <addr>"). dotenv strips the
+// quotes, but Kubernetes and some compose setups pass them through, and
+// nodemailer then takes the whole string as the address, which servers reject.
+const fromAddress = (process.env.SMTP_FROM || "OW Course Designer <noreply@example.com>")
+  .trim()
+  .replace(/^(["'])(.*)\1$/, "$2");
 
 export async function sendVerificationCode(
   to: string,

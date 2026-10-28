@@ -35,6 +35,9 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [resendMsg, setResendMsg] = useState<string | null>(null);
+  // false when the server could not send the verification email
+  const [emailSent, setEmailSent] = useState(true);
+  const [resending, setResending] = useState(false);
 
   const regForm = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
@@ -62,6 +65,8 @@ export default function RegisterPage() {
     }
     setEmail(data.email);
     setPassword(data.password);
+    setEmailSent(json.emailSent !== false);
+    setResendMsg(null);
     setStep("verify");
   };
 
@@ -95,17 +100,25 @@ export default function RegisterPage() {
   const onResend = async () => {
     setError(null);
     setResendMsg(null);
-    const res = await fetch("/api/resend-code", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      setError(json.error ?? "Could not resend code");
-      return;
+    setResending(true);
+    try {
+      const res = await fetch("/api/resend-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(typeof json.error === "string" ? json.error : "Could not resend the code. Please try again.");
+        return;
+      }
+      setEmailSent(true);
+      setResendMsg("A new code is on its way. Check your inbox and spam folder.");
+    } catch {
+      setError("Could not reach the server. Check your connection and try again.");
+    } finally {
+      setResending(false);
     }
-    setResendMsg("A new code has been sent to your email");
   };
 
   return (
@@ -118,7 +131,7 @@ export default function RegisterPage() {
               </h1>
 
               {error && (
-                <div className="alert alert-error">
+                <div className="alert alert-error text-sm">
                   <span>{error}</span>
                 </div>
               )}
@@ -227,22 +240,46 @@ export default function RegisterPage() {
                 Verify your email
               </h1>
 
-              <p className="text-center text-sm text-content2">
-                We sent a 6-digit code to <strong>{email}</strong>
-              </p>
+              {emailSent ? (
+                <p className="text-center text-sm text-content2">
+                  We sent a 6-digit code to <strong>{email}</strong>. It can take a
+                  minute to arrive; check your spam folder too.
+                </p>
+              ) : (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+                  <p className="font-semibold">We could not send the verification email</p>
+                  <p className="mt-1">
+                    Your account for <strong>{email}</strong> was created, but the email
+                    with your code did not go out. Try sending it again. If it keeps
+                    failing, please try again later.
+                  </p>
+                </div>
+              )}
 
               {error && (
-                <div className="alert alert-error">
+                <div className="alert alert-error text-sm">
                   <span>{error}</span>
                 </div>
               )}
 
               {resendMsg && (
-                <div className="alert alert-success">
+                <div className="alert alert-success text-sm">
                   <span>{resendMsg}</span>
                 </div>
               )}
 
+              {!emailSent && (
+                <button
+                  type="button"
+                  onClick={onResend}
+                  disabled={resending}
+                  className="btn btn-primary btn-block"
+                >
+                  {resending ? "Sending…" : "Send the code again"}
+                </button>
+              )}
+
+              {emailSent && (
               <form
                 onSubmit={codeForm.handleSubmit(onVerify)}
                 className="flex flex-col gap-3"
@@ -278,14 +315,18 @@ export default function RegisterPage() {
                     : "Verify & sign in"}
                 </button>
               </form>
+              )}
 
-              <button
-                type="button"
-                onClick={onResend}
-                className="btn btn-ghost btn-sm"
-              >
-                Resend code
-              </button>
+              {emailSent && (
+                <button
+                  type="button"
+                  onClick={onResend}
+                  disabled={resending}
+                  className="btn btn-ghost btn-sm"
+                >
+                  {resending ? "Sending…" : "Didn't get it? Resend code"}
+                </button>
+              )}
 
               <button
                 type="button"
