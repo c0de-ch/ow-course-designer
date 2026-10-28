@@ -1,6 +1,10 @@
 "use client";
 
-import { useCourseStore, type ElementType } from "@/store/courseStore";
+import { useState } from "react";
+import { createPortal } from "react-dom";
+import { useCourseStore, type CourseElement, type ElementType } from "@/store/courseStore";
+import { buildGpx } from "@/lib/gpx-builder";
+import { IconClose } from "@/components/ui/icons";
 
 const TYPE_LABELS: Record<ElementType, string> = {
   buoy: "Buoy",
@@ -19,50 +23,101 @@ const TYPE_LABELS: Record<ElementType, string> = {
   freehand: "Drawing",
 };
 
+/** Degrees and decimal minutes, as marine GPS units show them: N 46° 01.234' */
+export function formatDegMin(value: number, axis: "lat" | "lng"): string {
+  const hemi = axis === "lat" ? (value >= 0 ? "N" : "S") : (value >= 0 ? "E" : "W");
+  const abs = Math.abs(value);
+  let deg = Math.floor(abs);
+  let min = Math.round((abs - deg) * 60 * 1000) / 1000;
+  if (min >= 60) { deg += 1; min = 0; }
+  const degStr = String(deg).padStart(axis === "lat" ? 2 : 3, "0");
+  return `${hemi} ${degStr}° ${min.toFixed(3).padStart(6, "0")}'`;
+}
+
+interface CoordinateRow {
+  el: CourseElement;
+  name: string;
+}
+
+/** Point marks in route order; buoys numbered like the course editor (Buoy 1, 2, …) */
+export function coordinateRows(elements: CourseElement[]): CoordinateRow[] {
+  let buoyNo = 0;
+  return [...elements]
+    .filter((el) => el.type !== "rescue_zone" && el.type !== "freehand")
+    .sort((a, b) => a.order - b.order)
+    .map((el) => ({ el, name: el.type === "buoy" ? `Buoy ${++buoyNo}` : TYPE_LABELS[el.type] }));
+}
+
+function download(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 interface CoordinateListModalProps {
   onClose: () => void;
 }
 
 export function CoordinateListModal({ onClose }: CoordinateListModalProps) {
   const courseData = useCourseStore((s) => s.courseData);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const elements = [...courseData.elements]
-    .filter((el) => el.type !== "rescue_zone")
-    .sort((a, b) => a.order - b.order);
+  const rows = coordinateRows(courseData.elements);
+  const baseName = courseData.name.replace(/[^a-z0-9]/gi, "_");
+  const csv = (v: string) => `"${v.replace(/"/g, '""')}"`;
+
+  function copy(row: CoordinateRow) {
+    navigator.clipboard?.writeText(`${row.el.lat.toFixed(6)}, ${row.el.lng.toFixed(6)}`).then(() => {
+      setCopiedId(row.el.id);
+      setTimeout(() => setCopiedId(null), 1500);
+    });
+  }
 
   function handleDownloadCsv() {
-    const header = "#,Type,Label,Latitude,Longitude";
-    const rows = elements.map((el, i) => {
-      const label = el.label ? `"${el.label.replace(/"/g, '""')}"` : "";
-      return `${i + 1},${TYPE_LABELS[el.type]},${label},${el.lat.toFixed(6)},${el.lng.toFixed(6)}`;
-    });
-    const csv = [header, ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${courseData.name.replace(/[^a-z0-9]/gi, "_")}_coordinates.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const header = "#,Mark,Label,Latitude,Longitude,Latitude (DM),Longitude (DM)";
+    const lines = rows.map(({ el, name }, i) =>
+      [
+        i + 1,
+        name,
+        el.label ? csv(el.label) : "",
+        el.lat.toFixed(6),
+        el.lng.toFixed(6),
+        csv(formatDegMin(el.lat, "lat")),
+        csv(formatDegMin(el.lng, "lng")),
+      ].join(",")
+    );
+    download(`${baseName}_coordinates.csv`, [header, ...lines].join("\n"), "text/csv;charset=utf-8;");
+  }
+
+  function handleDownloadGpx() {
+    // Waypoint names as listed here, so a GPS shows "Buoy 3" rather than "buoy"
+    const named = rows.map(({ el, name }) => ({ ...el, label: el.label ? `${name} – ${el.label}` : name }));
+    download(`${baseName}_waypoints.gpx`, buildGpx(courseData.name, named), "application/gpx+xml");
   }
 
   function handlePrint() {
     const date = new Date().toLocaleDateString();
-    const rowsHtml = elements
+    const h = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const rowsHtml = rows
       .map(
-        (el, i) =>
+        ({ el, name }, i) =>
           `<tr>
             <td>${i + 1}</td>
-            <td>${TYPE_LABELS[el.type]}</td>
-            <td>${el.label ?? ""}</td>
+            <td>${h(name)}</td>
+            <td>${h(el.label ?? "")}</td>
             <td>${el.lat.toFixed(6)}</td>
             <td>${el.lng.toFixed(6)}</td>
+            <td>${formatDegMin(el.lat, "lat")} ${formatDegMin(el.lng, "lng")}</td>
           </tr>`
       )
       .join("");
 
     const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Coordinates — ${courseData.name}</title>
+<html><head><meta charset="utf-8"><title>Coordinates — ${h(courseData.name)}</title>
 <style>
   body { font-family: Arial, sans-serif; margin: 2cm; color: #111; }
   h1 { font-size: 18px; margin: 0 0 4px; }
@@ -70,13 +125,13 @@ export function CoordinateListModal({ onClose }: CoordinateListModalProps) {
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
   th { background: #f5f5f5; font-weight: 600; }
-  td:nth-child(4), td:nth-child(5), th:nth-child(4), th:nth-child(5) { font-family: monospace; }
+  td:nth-child(n+4), th:nth-child(n+4) { font-family: monospace; }
   @media print { body { margin: 1cm; } }
 </style></head><body>
-<h1>${courseData.name}</h1>
-<div class="sub">${courseData.lakeLabel ? courseData.lakeLabel + " — " : ""}${date}</div>
+<h1>${h(courseData.name)}</h1>
+<div class="sub">${courseData.lakeLabel ? h(courseData.lakeLabel) + " — " : ""}${date} — WGS84</div>
 <table>
-  <thead><tr><th>#</th><th>Type</th><th>Label</th><th>Latitude</th><th>Longitude</th></tr></thead>
+  <thead><tr><th>#</th><th>Mark</th><th>Label</th><th>Latitude</th><th>Longitude</th><th>Degrees, minutes</th></tr></thead>
   <tbody>${rowsHtml}</tbody>
 </table>
 </body></html>`;
@@ -90,27 +145,35 @@ export function CoordinateListModal({ onClose }: CoordinateListModalProps) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-black/50 rounded-2xl shadow-2xl ring-1 ring-white/15 w-full max-w-3xl flex flex-col max-h-[90vh] overflow-hidden">
+  // Portal: opened from the sidebar, but covers the whole page
+  return createPortal(
+    <div
+      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onKeyDown={(e) => e.key === "Escape" && onClose()}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="coordinates-title"
+    >
+      <div className="bg-base-100 text-base-content rounded-2xl shadow-2xl ring-1 ring-black/5 w-full max-w-4xl flex flex-col max-h-[90vh] overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4">
           <div>
-            <h3 className="text-lg font-semibold">GPS Coordinates</h3>
-            <p className="text-xs text-base-content/45 mt-0.5">
+            <h3 id="coordinates-title" className="text-lg font-semibold">GPS Coordinates</h3>
+            <p className="text-xs text-base-content/50 mt-0.5">
               {courseData.name}
-              {courseData.lakeLabel ? ` — ${courseData.lakeLabel}` : ""}
+              {courseData.lakeLabel ? ` — ${courseData.lakeLabel}` : ""} · WGS84
             </p>
           </div>
-          <button onClick={onClose} className="btn btn-sm btn-ghost btn-circle text-base-content/40 hover:text-base-content">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          <button onClick={onClose} className="btn btn-sm btn-ghost btn-circle text-base-content/50 hover:text-base-content" aria-label="Close" autoFocus>
+            <IconClose />
           </button>
         </div>
 
         {/* Table */}
         <div className="flex-1 overflow-auto px-6 pb-4">
-          {elements.length === 0 ? (
-            <p className="text-sm text-base-content/45 py-8 text-center">
+          {rows.length === 0 ? (
+            <p className="text-sm text-base-content/50 py-8 text-center">
               No elements placed yet.
             </p>
           ) : (
@@ -118,20 +181,30 @@ export function CoordinateListModal({ onClose }: CoordinateListModalProps) {
               <thead>
                 <tr>
                   <th className="w-10">#</th>
-                  <th>Type</th>
+                  <th>Mark</th>
                   <th>Label</th>
-                  <th className="font-mono">Latitude</th>
-                  <th className="font-mono">Longitude</th>
+                  <th>Latitude</th>
+                  <th>Longitude</th>
+                  <th>Degrees, minutes</th>
+                  <th className="w-16"><span className="sr-only">Copy</span></th>
                 </tr>
               </thead>
               <tbody>
-                {elements.map((el, i) => (
-                  <tr key={el.id}>
-                    <td className="text-base-content/45">{i + 1}</td>
-                    <td>{TYPE_LABELS[el.type]}</td>
-                    <td className="text-base-content/60">{el.label ?? ""}</td>
-                    <td className="font-mono text-sm">{el.lat.toFixed(6)}</td>
-                    <td className="font-mono text-sm">{el.lng.toFixed(6)}</td>
+                {rows.map((row, i) => (
+                  <tr key={row.el.id}>
+                    <td className="text-base-content/50">{i + 1}</td>
+                    <td className="whitespace-nowrap">{row.name}</td>
+                    <td className="text-base-content/60">{row.el.label ?? ""}</td>
+                    <td className="font-mono text-sm">{row.el.lat.toFixed(6)}</td>
+                    <td className="font-mono text-sm">{row.el.lng.toFixed(6)}</td>
+                    <td className="font-mono text-xs text-base-content/60 whitespace-nowrap">
+                      {formatDegMin(row.el.lat, "lat")}<br />{formatDegMin(row.el.lng, "lng")}
+                    </td>
+                    <td>
+                      <button onClick={() => copy(row)} className="btn btn-xs btn-ghost" title="Copy latitude, longitude">
+                        {copiedId === row.el.id ? "Copied" : "Copy"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -140,19 +213,14 @@ export function CoordinateListModal({ onClose }: CoordinateListModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-2 px-6 py-4 border-t border-base-200">
-          <button
-            onClick={handleDownloadCsv}
-            disabled={elements.length === 0}
-            className="btn btn-sm btn-primary"
-          >
+        <div className="flex flex-wrap items-center gap-2 px-6 py-4 border-t border-base-200">
+          <button onClick={handleDownloadCsv} disabled={rows.length === 0} className="btn btn-sm btn-primary">
             Download CSV
           </button>
-          <button
-            onClick={handlePrint}
-            disabled={elements.length === 0}
-            className="btn btn-sm btn-ghost"
-          >
+          <button onClick={handleDownloadGpx} disabled={rows.length === 0} className="btn btn-sm btn-outline" title="Waypoints for a handheld or boat GPS">
+            Download GPX
+          </button>
+          <button onClick={handlePrint} disabled={rows.length === 0} className="btn btn-sm btn-ghost">
             Print / PDF
           </button>
           <div className="flex-1" />
@@ -161,6 +229,7 @@ export function CoordinateListModal({ onClose }: CoordinateListModalProps) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

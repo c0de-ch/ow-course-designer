@@ -85,6 +85,8 @@ const manual: ManualEntry[] = [
 3. **Second click**: places the right gate post
 4. The gate appears as a line between the two posts
 
+To make a gate part of the swim route, open **Edit course** (top of the Route Order panel): set between which two marks the gate is passed (a buoy, Start or Finish) and the laps it is mandatory on. A gate between two buoys is passed on laps where those buoys follow each other.
+
 Gates are useful for marking swim course entry/exit points or turning points.`,
   },
   {

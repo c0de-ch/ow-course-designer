@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useCourseStore, CourseData, getRaceTotalKm, getRouteParts, getFinishMidpoint, getBuoySide } from "@/store/courseStore";
+import { useCourseStore, CourseData, getRaceTotalKm, getRouteParts } from "@/store/courseStore";
+import { buildRouteLines, ROUTE_COLOR } from "@/lib/route-geometry";
 import { getMarkerSvg } from "./markers/markerIcons";
 import { buildCameraPath, type CameraFrame } from "@/lib/flyover/cameraPath";
-import { computeBearing, arcAroundBuoy } from "@/lib/haversine";
 import { getLoadedPublicConfig } from "@/lib/public-config";
 
 // Swimmer marker: an orange dot with a white ring and a light halo. On a
@@ -116,58 +116,26 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
 
       // Draw route polylines (solid buoy loop + dashed entry/exit)
       const parts = getRouteParts(courseData.elements);
-      const buoys = parts.buoys;
+      const route = buildRouteLines(courseData.elements, courseData.laps ?? 1);
 
-      if (buoys.length >= 2) {
-        const closedBuoys = [...buoys, buoys[0]];
-        const offsetPath = closedBuoys.flatMap((b, i) => {
-          const pt = { lat: b.lat, lng: b.lng };
-          const side = getBuoySide(b.metadata);
-          if (side === "directional") return [pt];
-          const prev = closedBuoys[(i - 1 + closedBuoys.length) % closedBuoys.length];
-          const next = closedBuoys[(i + 1) % closedBuoys.length];
-          const bearing = computeBearing(prev, next);
-          return arcAroundBuoy(pt, bearing, side);
-        });
-
+      for (const l of [route.loop, ...route.lapSegments]) {
+        if (!l) continue;
         new google.maps.Polyline({
-          path: offsetPath,
+          path: l.path,
           geodesic: true,
-          strokeColor: "#3B82F6",
+          strokeColor: l.color,
           strokeOpacity: 0.8,
           strokeWeight: 4,
           map,
         });
       }
 
-      if (parts.start && buoys.length > 0) {
+      for (const l of [route.startLine, route.finishLine]) {
+        if (!l) continue;
         new google.maps.Polyline({
-          path: [
-            { lat: parts.start.lat, lng: parts.start.lng },
-            { lat: buoys[0].lat, lng: buoys[0].lng },
-          ],
+          path: l.path,
           geodesic: true,
-          strokeColor: "#3B82F6",
-          strokeOpacity: 0.6,
-          strokeWeight: 3,
-          icons: [{
-            icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 },
-            offset: "0",
-            repeat: "15px",
-          }],
-          map,
-        });
-      }
-
-      const finishMid = getFinishMidpoint(parts);
-      if (finishMid && buoys.length > 0) {
-        new google.maps.Polyline({
-          path: [
-            { lat: buoys[0].lat, lng: buoys[0].lng },
-            { lat: finishMid.lat, lng: finishMid.lng },
-          ],
-          geodesic: true,
-          strokeColor: "#3B82F6",
+          strokeColor: ROUTE_COLOR,
           strokeOpacity: 0.6,
           strokeWeight: 3,
           icons: [{

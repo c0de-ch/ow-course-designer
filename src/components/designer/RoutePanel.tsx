@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { LapEditorModal } from "./LapEditorModal";
+import { CoordinateListModal, formatDegMin } from "./CoordinateListModal";
 import { useCourseStore, CourseElement, ElementType, BuoySide, FINISH_TYPES, getBuoySide, setBuoySideInMeta, parseFreehand } from "@/store/courseStore";
 
 const TYPE_LABELS: Record<ElementType, string> = {
@@ -38,7 +39,39 @@ const TYPE_COLORS: Record<ElementType, string> = {
   freehand: "#9CA3AF",
 };
 
-const LAPS_TYPES: ElementType[] = ["buoy", "gate_left", "gate_right"];
+const LAPS_TYPES: ElementType[] = ["buoy"];
+const GATE_TYPES: ElementType[] = ["gate_left", "gate_right"];
+
+function CoordinateLine({ el }: { el: CourseElement }) {
+  const [copied, setCopied] = useState(false);
+  const text = `${el.lat.toFixed(6)}, ${el.lng.toFixed(6)}`;
+  return (
+    <div className="ml-8 px-2 py-1">
+      <label className="text-xs text-base-content/60 block mb-1">GPS position</label>
+      <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0 font-mono text-xs leading-snug">
+          <div className="truncate" title="Decimal degrees (WGS84)">{text}</div>
+          <div className="truncate text-base-content/50" title="Degrees and decimal minutes">
+            {formatDegMin(el.lat, "lat")} {formatDegMin(el.lng, "lng")}
+          </div>
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            navigator.clipboard?.writeText(text).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            });
+          }}
+          className="btn btn-xs btn-ghost shrink-0"
+          title="Copy latitude, longitude"
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function FreehandSection({ elements, onDelete }: { elements: CourseElement[]; onDelete: (el: CourseElement) => void }) {
   const { updateElementMeta } = useCourseStore();
@@ -121,6 +154,7 @@ export function RoutePanel() {
   const dragIndexRef = useRef<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [lapEditorOpen, setLapEditorOpen] = useState(false);
+  const [coordsOpen, setCoordsOpen] = useState(false);
 
   const routeElements = [...courseData.elements]
     .filter((el) => el.type !== "rescue_zone" && el.type !== "freehand")
@@ -234,26 +268,35 @@ export function RoutePanel() {
 
   return (
     <div className="p-3 border-t border-base-300">
-      <div className="flex items-center justify-between">
-        <p className="side-heading">
-          Route Order
-        </p>
+      <div className="flex gap-2 mb-3">
         {routeElements.some((el) => el.type === "buoy") && (
           <button
             onClick={() => setLapEditorOpen(true)}
-            className="text-xs font-medium text-sky-700 hover:underline px-2"
-            title="Choose per lap which buoys are skipped or rounded on the other side"
+            className="btn btn-sm btn-primary flex-1"
+            title="Per lap: skip buoys, change their swim side, and set mandatory gates"
           >
-            Edit laps
+            Edit course
           </button>
         )}
+        <button
+          onClick={() => setCoordsOpen(true)}
+          className="btn btn-sm btn-outline flex-1"
+          title="GPS coordinates of every buoy and mark, with CSV / GPX export"
+        >
+          GPS coordinates
+        </button>
       </div>
       {lapEditorOpen && <LapEditorModal onClose={() => setLapEditorOpen(false)} />}
+      {coordsOpen && <CoordinateListModal onClose={() => setCoordsOpen(false)} />}
+      <p className="side-heading">
+        Route Order
+      </p>
       <div className="flex flex-col gap-0.5">
         {routeElements.map((el, i) => {
           const isSelected = selectedElementId === el.id;
           const elShowLaps = isSelected && LAPS_TYPES.includes(el.type);
           const elShowSide = isSelected && el.type === "buoy";
+          const elShowGate = isSelected && GATE_TYPES.includes(el.type);
           return (
             <div key={el.id}>
               <div
@@ -311,6 +354,16 @@ export function RoutePanel() {
                   />
                 </div>
               )}
+              {elShowGate && (
+                <div className="ml-8 px-2 py-1 text-xs text-base-content/60">
+                  Set the laps and between which buoys this gate is passed in{" "}
+                  <button onClick={() => setLapEditorOpen(true)} className="text-sky-700 hover:underline font-medium">
+                    Edit course
+                  </button>
+                  .
+                </div>
+              )}
+              {isSelected && <CoordinateLine el={el} />}
               {elShowSide && (
                 <div className="ml-8 px-2 py-1">
                   <label className="text-xs text-base-content/60 block mb-1">Swim side</label>
