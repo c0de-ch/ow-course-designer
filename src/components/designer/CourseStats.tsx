@@ -46,9 +46,9 @@ export function CourseStats() {
           <button
             onClick={() => setLapEditorOpen(true)}
             className="ml-1 text-xs font-medium text-sky-700 hover:underline"
-            title="Choose per lap which buoys are skipped or rounded on the other side"
+            title="Per lap: skip buoys, change their swim side, and set mandatory gates"
           >
-            Edit laps
+            Edit course
           </button>
         )}
       </div>

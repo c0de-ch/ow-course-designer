@@ -1,5 +1,5 @@
 import { haversineDistanceKm, LatLng } from "@/lib/haversine";
-import { CourseElement, getRouteParts, getFinishMidpoint, getBuoysForLap } from "@/store/courseStore";
+import { CourseElement, getRouteParts, getLapLoop, getStartLeg, getFinishLeg } from "@/store/courseStore";
 
 export interface CameraFrame {
   center: google.maps.LatLngLiteral;
@@ -71,36 +71,36 @@ export function buildCameraPath(
 
   // Build the full swim path: start → (buoy loop + gates per lap) × laps → finish
   // Track which points belong to which lap for pacing
-  const pts: LatLng[] = [];
+  const pts: (LatLng & { id?: string })[] = [];
   const lapBoundaries: number[] = []; // indices where each lap starts
 
-  // Entry: start → first buoy (only if start exists)
-  if (parts.start) {
-    pts.push({ lat: parts.start.lat, lng: parts.start.lng });
+  // Entry: start (and any start gate) → first waypoint of lap 1
+  const startLeg = getStartLeg(elements);
+  if (startLeg) {
+    pts.push(...startLeg.slice(0, -1));
   }
 
   for (let lap = 0; lap < laps; lap++) {
     lapBoundaries.push(pts.length);
     const lapNum = lap + 1;
 
-    // Per-lap buoy filtering: only include buoys active for this lap
-    const lapBuoys = getBuoysForLap(buoys, lapNum);
-    if (lapBuoys.length === 0) continue;
+    // Per-lap filtering: only the buoys and gates swum on this lap
+    const loop = getLapLoop(elements, lapNum);
+    if (loop.length === 0) continue;
 
-    for (const b of lapBuoys) {
-      pts.push({ lat: b.lat, lng: b.lng });
-    }
+    pts.push(...loop);
 
-    // Close the loop back to first buoy of this lap
-    pts.push({ lat: lapBuoys[0].lat, lng: lapBuoys[0].lng });
+    // Close the loop back to first waypoint of this lap
+    pts.push(loop[0]);
   }
 
-  // Exit: first buoy → finish (only if finish exists)
-  const finishMid = getFinishMidpoint(parts);
-  if (finishMid) {
-    // Remove the duplicate closing point from last lap (we'll go to finish instead)
+  // Exit: last buoy of the last lap → (finish gate) → finish (only if finish exists)
+  const finishLeg = getFinishLeg(elements, laps);
+  if (finishLeg) {
+    // Drop the closing point and any gate after the last buoy (we'll go to finish instead)
     pts.pop();
-    pts.push({ lat: finishMid.lat, lng: finishMid.lng });
+    while (pts.length > 0 && pts[pts.length - 1].id !== finishLeg[0].id) pts.pop();
+    pts.push(...finishLeg.slice(1));
   }
 
   if (pts.length < 2) return [];

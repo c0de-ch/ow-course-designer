@@ -193,16 +193,199 @@ export function computeLapLoopKm(buoys: CourseElement[], lap: number): number {
   return km;
 }
 
-/** Compute actual race total distance accounting for per-lap buoy filtering */
+/** Endpoint ids a gate can be placed after (start) or before (finish), next to buoy ids */
+export const START_ID = "start";
+export const FINISH_ID = "finish";
+
+/** An intermediate gate: a gate_left post paired with the gate_right placed after it */
+export interface GatePair {
+  /** The gate_left element id; the gate's settings live in its metadata */
+  id: string;
+  left: CourseElement;
+  right: CourseElement | undefined;
+  /** Midpoint the swimmers pass through */
+  lat: number;
+  lng: number;
+  /** Laps the gate must be passed on; null = every lap */
+  laps: number[] | null;
+  /** Route waypoints the gate sits between: buoy ids, START_ID or FINISH_ID */
+  from: string | null;
+  to: string | null;
+}
+
+/** Gate pairs in route order: each gate_left takes the first unpaired gate_right after it */
+export function getGates(elements: CourseElement[]): GatePair[] {
+  const sorted = [...elements].sort((a, b) => a.order - b.order);
+  const used = new Set<string>();
+  const gates: GatePair[] = [];
+  sorted.forEach((el, i) => {
+    if (el.type !== "gate_left") return;
+    const right = sorted.slice(i + 1).find((r) => r.type === "gate_right" && !used.has(r.id));
+    if (right) used.add(right.id);
+    const { from, to } = getGateBetween(el.metadata);
+    gates.push({
+      id: el.id,
+      left: el,
+      right,
+      lat: right ? (el.lat + right.lat) / 2 : el.lat,
+      lng: right ? (el.lng + right.lng) / 2 : el.lng,
+      laps: getMandatoryLaps(el.metadata),
+      from,
+      to,
+    });
+  });
+  return gates;
+}
+
+export function getGateBetween(metadata?: string | null): { from: string | null; to: string | null } {
+  try {
+    const m = metadata ? JSON.parse(metadata) : null;
+    if (Array.isArray(m?.between) && m.between.length === 2) {
+      return { from: m.between[0] || null, to: m.between[1] || null };
+    }
+  } catch {}
+  return { from: null, to: null };
+}
+
+export function setGateBetweenInMeta(metadata: string | null | undefined, from: string | null, to: string | null): string | null {
+  let meta: Record<string, unknown> = {};
+  try {
+    const parsed = metadata ? JSON.parse(metadata) : null;
+    if (parsed && !Array.isArray(parsed)) meta = parsed;
+  } catch {}
+  if (from || to) meta.between = [from ?? "", to ?? ""];
+  else delete meta.between;
+  return Object.keys(meta).length > 0 ? JSON.stringify(meta) : null;
+}
+
+export function isGateActiveOnLap(gate: GatePair, lap: number): boolean {
+  return gate.laps === null || gate.laps.includes(lap);
+}
+
+/** A waypoint of the swim route: a buoy rounded on a side, or a gate passed through */
+export interface RoutePoint {
+  id: string;
+  kind: "buoy" | "gate";
+  lat: number;
+  lng: number;
+  side: BuoySide;
+}
+
+function buoyPoint(b: CourseElement, side: BuoySide): RoutePoint {
+  return { id: b.id, kind: "buoy", lat: b.lat, lng: b.lng, side };
+}
+
+function gatePoint(g: GatePair): RoutePoint {
+  return { id: g.id, kind: "gate", lat: g.lat, lng: g.lng, side: "directional" };
+}
+
+/** Gates set between `from` and `to`, nearest to `from` first */
+function gatesBetween(gates: GatePair[], from: { id: string; lat: number; lng: number }, toId: string): RoutePoint[] {
+  return gates
+    .filter((g) => g.from === from.id && g.to === toId)
+    .sort((a, b) => haversineDistanceKm(from, a) - haversineDistanceKm(from, b))
+    .map(gatePoint);
+}
+
+/** Insert gates into a closed buoy loop wherever their from → to pair is consecutive */
+function insertGates(seq: RoutePoint[], gates: GatePair[]): RoutePoint[] {
+  return seq.flatMap((a, i) => [a, ...gatesBetween(gates, a, seq[(i + 1) % seq.length].id)]);
+}
+
+/**
+ * One lap's closed loop: the buoys active on that lap (with that lap's side),
+ * with the gates mandatory on that lap inserted between their two waypoints.
+ */
+export function getLapLoop(elements: CourseElement[], lap: number): RoutePoint[] {
+  const buoys = getBuoysForLap(getRouteParts(elements).buoys, lap);
+  const gates = getGates(elements).filter((g) => isGateActiveOnLap(g, lap));
+  return insertGates(buoys.map((b) => buoyPoint(b, getBuoySideForLap(b.metadata, lap))), gates);
+}
+
+/**
+ * The standard loop drawn in blue: every buoy swum on at least one lap (with its
+ * normal side) and the gates mandatory on every lap. Laps whose loop differs
+ * from it are drawn in their own colour.
+ */
+export function getBaseLoop(elements: CourseElement[], laps: number): RoutePoint[] {
+  const lapNumbers = Array.from({ length: Math.max(1, laps) }, (_, i) => i + 1);
+  const buoys = getRouteParts(elements).buoys.filter((b) => {
+    const ml = getMandatoryLaps(b.metadata);
+    return ml === null || lapNumbers.some((l) => ml.includes(l));
+  });
+  const gates = getGates(elements).filter((g) => lapNumbers.every((l) => isGateActiveOnLap(g, l)));
+  return insertGates(buoys.map((b) => buoyPoint(b, getBuoySide(b.metadata))), gates);
+}
+
+/** Start → (gates) → first waypoint of lap 1; null without a start or a lap-1 buoy */
+export function getStartLeg(elements: CourseElement[]): RoutePoint[] | null {
+  const start = getRouteParts(elements).start;
+  const loop = getLapLoop(elements, 1);
+  if (!start || loop.length === 0) return null;
+  const gates = getGates(elements).filter((g) => isGateActiveOnLap(g, 1));
+  return [
+    { id: START_ID, kind: "buoy", lat: start.lat, lng: start.lng, side: "directional" },
+    ...gatesBetween(gates, { id: START_ID, lat: start.lat, lng: start.lng }, loop[0].id),
+    loop[0],
+  ];
+}
+
+/** Last buoy of the last lap → (gates) → finish; null without a finish or a buoy */
+export function getFinishLeg(elements: CourseElement[], laps: number): RoutePoint[] | null {
+  const finish = getFinishMidpoint(getRouteParts(elements));
+  const lastLap = Math.max(1, laps);
+  const lastBuoy = getLapLoop(elements, lastLap).filter((p) => p.kind === "buoy").at(-1);
+  if (!finish || !lastBuoy) return null;
+  const gates = getGates(elements).filter((g) => isGateActiveOnLap(g, lastLap));
+  return [
+    lastBuoy,
+    ...gatesBetween(gates, lastBuoy, FINISH_ID),
+    { id: FINISH_ID, kind: "buoy", lat: finish.lat, lng: finish.lng, side: "directional" },
+  ];
+}
+
+function pathKm(points: { lat: number; lng: number }[]): number {
+  let km = 0;
+  for (let i = 1; i < points.length; i++) km += haversineDistanceKm(points[i - 1], points[i]);
+  return km;
+}
+
+/** Closed-loop distance (km) of one lap, gates included */
+export function computeLapRouteKm(elements: CourseElement[], lap: number): number {
+  const loop = getLapLoop(elements, lap);
+  if (loop.length < 2) return 0;
+  return pathKm([...loop, loop[0]]);
+}
+
+/**
+ * Why a gate is not passed on a lap where it is mandatory, or null when it is:
+ * its two waypoints must both be swum on that lap, one right after the other.
+ */
+export function getGateLapProblem(elements: CourseElement[], gate: GatePair, lap: number, laps: number): string | null {
+  if (!gate.from || !gate.to) return "Choose between which marks the gate is";
+  if (gate.from === START_ID) {
+    if (lap !== 1) return "The start is only swum on lap 1";
+    return getStartLeg(elements)?.some((p) => p.id === gate.id) ? null : "Not right before the first buoy of lap 1";
+  }
+  if (gate.to === FINISH_ID) {
+    if (lap !== Math.max(1, laps)) return "The finish is only swum after the last lap";
+    return getFinishLeg(elements, laps)?.some((p) => p.id === gate.id) ? null : "Not right after the last buoy of the last lap";
+  }
+  return getLapLoop(elements, lap).some((p) => p.id === gate.id)
+    ? null
+    : "The two buoys do not follow each other on this lap";
+}
+
+/** Compute actual race total distance accounting for per-lap buoy filtering and gates */
 export function getRaceTotalKm(courseData: CourseData): { totalKm: number; avgLoopKm: number } {
-  const parts = getRouteParts(courseData.elements);
-  const buoys = parts.buoys;
+  const { elements } = courseData;
+  const parts = getRouteParts(elements);
   const laps = courseData.laps ?? 1;
 
   // Sum each lap's actual closed-loop distance
   let totalLoopKm = 0;
   for (let lap = 1; lap <= laps; lap++) {
-    totalLoopKm += computeLapLoopKm(buoys, lap);
+    totalLoopKm += computeLapRouteKm(elements, lap);
   }
   const avgLoopKm = laps > 0 ? totalLoopKm / laps : 0;
 
@@ -212,30 +395,21 @@ export function getRaceTotalKm(courseData: CourseData): { totalKm: number; avgLo
     entryKm = haversineDistanceKm(parts.shoreEntry, parts.start);
   }
 
-  // Start → first buoy on lap 1 + last buoy on lap 1 → start (replaces Bn→B1 with Bn→start→B1)
+  // Lap 1 goes through the start: its closing leg last → first becomes last → start → (gates) → first
   let firstLapExtraKm = 0;
-  if (parts.start && buoys.length >= 1) {
-    const lap1Buoys = getBuoysForLap(buoys, 1);
-    if (lap1Buoys.length >= 1) {
-      const b1 = lap1Buoys[0];
-      const bn = lap1Buoys[lap1Buoys.length - 1];
-      firstLapExtraKm =
-        haversineDistanceKm(bn, parts.start) +
-        haversineDistanceKm(parts.start, b1) -
-        haversineDistanceKm(bn, b1);
-    }
+  const startLeg = getStartLeg(elements);
+  if (parts.start && startLeg) {
+    const loop = getLapLoop(elements, 1);
+    const last = loop[loop.length - 1];
+    firstLapExtraKm =
+      haversineDistanceKm(last, parts.start) +
+      pathKm(startLeg) -
+      haversineDistanceKm(last, loop[0]);
   }
 
-  // Exit: last buoy of last lap → finish
-  const finishMid = getFinishMidpoint(parts);
-  let exitKm = 0;
-  if (finishMid && buoys.length > 0) {
-    const lastLapBuoys = getBuoysForLap(buoys, laps);
-    const lastBuoy = lastLapBuoys.length > 0
-      ? lastLapBuoys[lastLapBuoys.length - 1]
-      : buoys[buoys.length - 1];
-    exitKm = haversineDistanceKm(lastBuoy, finishMid);
-  }
+  // Exit: last buoy of last lap → (gates) → finish
+  const finishLeg = getFinishLeg(elements, laps);
+  const exitKm = finishLeg ? pathKm(finishLeg) : 0;
 
   const totalKm = entryKm + totalLoopKm + firstLapExtraKm + exitKm;
   return { totalKm, avgLoopKm };
@@ -244,22 +418,22 @@ export function getRaceTotalKm(courseData: CourseData): { totalKm: number; avgLo
 /** Colors for laps that differ from the standard (all-buoys) route */
 export const DIFF_LAP_COLORS = ["#22C55E", "#7C3AED", "#EC4899", "#F97316"];
 
+function loopKey(loop: RoutePoint[]): string {
+  return loop.map((p) => `${p.id}:${p.side}`).join(",");
+}
+
 /**
- * Compute which laps have a different buoy path from the full set.
+ * Compute which laps have a different path from the standard loop (getBaseLoop):
+ * a buoy skipped or swum on another side, or a gate passed on some laps only.
  * Returns only the laps that differ, each with a distinct color.
- * Laps that use all buoys keep the default blue color and are not listed.
  */
 export function getDifferingLaps(elements: CourseElement[], laps: number): { lap: number; color: string }[] {
-  const buoys = getRouteParts(elements).buoys;
-  if (buoys.length < 2 || laps <= 1) return [];
-  if (!hasLapVariation(buoys)) return [];
-
-  const allBuoyIds = buoys.map((b) => b.id).join(",");
+  const base = getBaseLoop(elements, laps);
+  if (base.length < 2) return [];
+  const baseKey = loopKey(base);
   const result: { lap: number; color: string }[] = [];
   for (let lap = 1; lap <= laps; lap++) {
-    const lapBuoys = getBuoysForLap(buoys, lap);
-    const sideChanged = lapBuoys.some((b) => getBuoySideForLap(b.metadata, lap) !== getBuoySide(b.metadata));
-    if (sideChanged || lapBuoys.map((b) => b.id).join(",") !== allBuoyIds) {
+    if (loopKey(getLapLoop(elements, lap)) !== baseKey) {
       result.push({ lap, color: DIFF_LAP_COLORS[result.length % DIFF_LAP_COLORS.length] });
     }
   }
@@ -348,6 +522,8 @@ interface CourseStore {
   updateElementPosition: (id: string, lat: number, lng: number) => void;
   updateElementMeta: (id: string, meta: string | null) => void;
   setBuoyLapRule: (id: string, lap: number, rule: LapRule) => void;
+  /** Set between which route waypoints a gate (its gate_left id) is passed */
+  setGateBetween: (id: string, from: string | null, to: string | null) => void;
   updateElementLabel: (id: string, label: string | null) => void;
   removeElement: (id: string) => void;
   reorderElements: (elements: CourseElement[]) => void;
@@ -500,6 +676,12 @@ export const useCourseStore = create<CourseStore>((set, get) => ({
     const el = courseData.elements.find((e) => e.id === id);
     if (!el) return;
     get().updateElementMeta(id, setBuoyLapRuleInMeta(el.metadata, lap, rule, courseData.laps ?? 1));
+  },
+
+  setGateBetween: (id, from, to) => {
+    const el = get().courseData.elements.find((e) => e.id === id);
+    if (!el) return;
+    get().updateElementMeta(id, setGateBetweenInMeta(el.metadata, from, to));
   },
 
   updateElementLabel: (id, label) => {

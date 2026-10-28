@@ -12,6 +12,17 @@ import {
   getBuoyLapRule,
   getBuoySideForLap,
   setBuoyLapRuleInMeta,
+  getStartLeg,
+  getFinishLeg,
+  getLapLoop,
+  getBaseLoop,
+  getGates,
+  getGateBetween,
+  setGateBetweenInMeta,
+  getGateLapProblem,
+  computeLapRouteKm,
+  START_ID,
+  FINISH_ID,
   CourseData,
   CourseElement,
   useCourseStore,
@@ -265,5 +276,88 @@ describe("per-lap buoy rules", () => {
       buoy("c", 47.0, 8.01, 2),
     ];
     expect(getDifferingLaps(els, 2).map((d) => d.lap)).toEqual([2]);
+  });
+});
+
+describe("route with skipped buoys and gates", () => {
+  const start: CourseElement = { id: "s", type: "start", lat: 0, lng: -0.01, order: 0 };
+  const finish: CourseElement = { id: "f", type: "finish_endpoint", lat: -0.005, lng: -0.01, order: 99 };
+  const b1 = buoy("b1", 0, 0, 1);
+  const b2 = buoy("b2", 0.01, 0, 2);
+  const b3 = buoy("b3", 0.01, 0.01, 3);
+  const gate = (meta: Record<string, unknown> | null, order = 10): CourseElement[] => [
+    { id: "gl", type: "gate_left", lat: 0.005, lng: -0.004, order, metadata: meta ? JSON.stringify(meta) : null },
+    { id: "gr", type: "gate_right", lat: 0.005, lng: -0.002, order: order + 1 },
+  ];
+  const ids = (pts: { id: string }[] | null) => pts?.map((p) => p.id);
+
+  it("starts at the first buoy swum on lap 1 when buoy 1 is skipped on lap 1", () => {
+    const skip1 = buoy("b1", 0, 0, 1, JSON.stringify({ mandatoryLaps: "2" }));
+    const els = [start, skip1, b2, b3, finish];
+    expect(ids(getStartLeg(els))).toEqual([START_ID, "b2"]);
+    expect(ids(getLapLoop(els, 1))).toEqual(["b2", "b3"]);
+    expect(ids(getLapLoop(els, 2))).toEqual(["b1", "b2", "b3"]);
+  });
+
+  it("leaves a buoy skipped on every lap out of the standard loop", () => {
+    const skip1 = buoy("b1", 0, 0, 1, JSON.stringify({ mandatoryLaps: "" }));
+    const els = [start, skip1, b2, b3];
+    // laps=1: the single lap is the standard loop, nothing drawn as a deviation
+    expect(ids(getBaseLoop(els, 1))).toEqual(["b2", "b3"]);
+    expect(getDifferingLaps(els, 1)).toEqual([]);
+  });
+
+  it("pairs gate posts and takes the midpoint", () => {
+    const g = getGates([b1, ...gate(null)]);
+    expect(g).toHaveLength(1);
+    expect(g[0].id).toBe("gl");
+    expect(g[0].lat).toBeCloseTo(0.005);
+    expect(g[0].lng).toBeCloseTo(-0.003);
+  });
+
+  it("inserts a gate between its two buoys only on its laps", () => {
+    const els = [start, b1, b2, b3, ...gate({ between: ["b1", "b2"], mandatoryLaps: "2" })];
+    expect(ids(getLapLoop(els, 1))).toEqual(["b1", "b2", "b3"]);
+    expect(ids(getLapLoop(els, 2))).toEqual(["b1", "gl", "b2", "b3"]);
+    expect(getDifferingLaps(els, 2).map((d) => d.lap)).toEqual([2]);
+    expect(computeLapRouteKm(els, 2)).toBeGreaterThan(computeLapRouteKm(els, 1));
+  });
+
+  it("puts a gate on every lap into the standard loop", () => {
+    const els = [b1, b2, b3, ...gate({ between: ["b1", "b2"] })];
+    expect(ids(getBaseLoop(els, 3))).toEqual(["b1", "gl", "b2", "b3"]);
+    expect(getDifferingLaps(els, 3)).toEqual([]);
+  });
+
+  it("reports a gate whose buoys do not follow each other on a lap", () => {
+    const skip2 = buoy("b2", 0.01, 0, 2, JSON.stringify({ mandatoryLaps: "1" }));
+    const els = [b1, skip2, b3, ...gate({ between: ["b1", "b2"] })];
+    const g = getGates(els)[0];
+    expect(getGateLapProblem(els, g, 1, 2)).toBeNull();
+    expect(getGateLapProblem(els, g, 2, 2)).toMatch(/do not follow/);
+    expect(getGateLapProblem(els, { ...g, from: null }, 1, 2)).toMatch(/Choose/);
+  });
+
+  it("routes start and finish legs through start/finish gates", () => {
+    const startGate = [b1, b2, b3, start, finish, ...gate({ between: [START_ID, "b1"] })];
+    expect(ids(getStartLeg(startGate))).toEqual([START_ID, "gl", "b1"]);
+    const finishGate = [b1, b2, b3, start, finish, ...gate({ between: ["b3", FINISH_ID] })];
+    expect(ids(getFinishLeg(finishGate, 2))).toEqual(["b3", "gl", FINISH_ID]);
+    // a start gate never lands in a lap loop
+    expect(ids(getLapLoop(startGate, 1))).toEqual(["b1", "b2", "b3"]);
+  });
+
+  it("counts gate detours in the race total", () => {
+    const plain = { name: "x", zoomLevel: 14, laps: 2, elements: [start, b1, b2, b3, finish] };
+    const gated = { ...plain, elements: [...plain.elements, ...gate({ between: ["b1", "b2"] })] };
+    expect(getRaceTotalKm(gated).totalKm).toBeGreaterThan(getRaceTotalKm(plain).totalKm);
+  });
+
+  it("stores gate laps with the buoy lap rule and keeps between", () => {
+    let meta = setGateBetweenInMeta(null, "b1", "b2");
+    meta = setBuoyLapRuleInMeta(meta, 1, "skip", 3);
+    expect(getGateBetween(meta)).toEqual({ from: "b1", to: "b2" });
+    expect(getMandatoryLaps(meta)).toEqual([2, 3]);
+    expect(setGateBetweenInMeta(JSON.stringify({ between: ["b1", "b2"] }), null, null)).toBeNull();
   });
 });

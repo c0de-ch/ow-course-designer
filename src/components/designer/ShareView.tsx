@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
 import { getPublicConfig } from "@/lib/public-config";
-import { CourseData, getBuoySide, getRouteParts, getFinishMidpoint, getBuoysForLap, getBuoySideForLap, hasLapVariation, getDifferingLaps, parseFreehand, getRaceTotalKm } from "@/store/courseStore";
-import { computeBearing, arcAroundBuoy } from "@/lib/haversine";
+import { CourseData, getRouteParts, getDifferingLaps, parseFreehand, getRaceTotalKm } from "@/store/courseStore";
 import { coursePoints } from "@/lib/course-bounds";
+import { buildRouteLines, RouteLine } from "@/lib/route-geometry";
 import { createMarkerLabel, getMarkerSvg } from "./markers/markerIcons";
 import { RaceBranding } from "./RaceBranding";
 import { Legend, ENTRIES as LEGEND_ENTRIES } from "./Legend";
@@ -138,41 +138,22 @@ export function ShareView({ courseData, isPrint, token, flyoverUrl }: Props) {
 
     // Polyline: solid buoy loop + dashed entry/exit
     const parts = getRouteParts(courseData.elements);
-    const buoys = parts.buoys;
-    const laps = courseData.laps ?? 1;
-    const hasPerLapVariation = hasLapVariation(buoys);
+    const route = buildRouteLines(courseData.elements, courseData.laps ?? 1);
 
-    // Helper: build offset path for a set of buoys (closed loop)
-    function buildOffsetPath(loopBuoys: typeof buoys) {
-      const closed = [...loopBuoys, loopBuoys[0]];
-      return closed.flatMap((b, i) => {
-        const pt = { lat: b.lat, lng: b.lng };
-        const side = getBuoySide(b.metadata);
-        if (side === "directional") return [pt];
-        const prev = closed[(i - 1 + closed.length) % closed.length];
-        const next = closed[(i + 1) % closed.length];
-        const bearing = computeBearing(prev, next);
-        return arcAroundBuoy(pt, bearing, side);
-      });
-    }
-
-    // Helper: add segment arrow polylines (invisible line with arrow at midpoint)
-    function addSegmentArrows(segBuoys: typeof buoys, color: string) {
-      const closed = [...segBuoys, segBuoys[0]];
-      for (let j = 0; j < closed.length - 1; j++) {
+    // Direction arrows: invisible lines with an arrow at the midpoint
+    function addArrows(line: RouteLine) {
+      for (const [from, to] of line.arrows) {
         new google.maps.Polyline({
-          path: [
-            { lat: closed[j].lat, lng: closed[j].lng },
-            { lat: closed[j + 1].lat, lng: closed[j + 1].lng },
-          ],
+          path: [from, to],
           geodesic: true,
           strokeOpacity: 0,
           strokeWeight: 0,
+          zIndex: 10,
           icons: [{
             icon: {
               path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
               scale: 5,
-              fillColor: color,
+              fillColor: line.color,
               fillOpacity: 1,
               strokeColor: "#FFFFFF",
               strokeWeight: 2,
@@ -185,134 +166,19 @@ export function ShareView({ courseData, isPrint, token, flyoverUrl }: Props) {
       }
     }
 
-    // Buoy loop offset path + entry/exit connection points
-    let loopEntryPoint: { lat: number; lng: number } | null = null;
-    let loopExitPoint: { lat: number; lng: number } | null = null;
-
-    if (buoys.length >= 2) {
-      const offsetPath = buildOffsetPath(buoys);
-
-      // Find the offset path's entry (B1 approach) and exit (Bn departure) points
-      let totalBuoyPoints = 0;
-      for (const b of buoys) {
-        totalBuoyPoints += getBuoySide(b.metadata) === "directional" ? 1 : 3;
-      }
-      loopEntryPoint = offsetPath[0];
-      loopExitPoint = offsetPath[totalBuoyPoints - 1];
-
+    // Standard loop (blue), the per-lap deviations, and the start/finish legs (orange)
+    for (const l of [route.loop, ...route.lapSegments, route.startLine, route.finishLine]) {
+      if (!l) continue;
       new google.maps.Polyline({
-        path: offsetPath,
+        path: l.path,
         geodesic: true,
-        strokeColor: "#3B82F6",
+        strokeColor: l.color,
         strokeOpacity: 0.8,
         strokeWeight: 4,
-        zIndex: 1,
+        zIndex: l === route.loop || l === route.startLine || l === route.finishLine ? 1 : undefined,
         map,
       });
-      addSegmentArrows(buoys, "#3B82F6");
-
-      // Overlay colored polylines only for shortcut segments (where buoys are skipped)
-      if (hasPerLapVariation && laps > 1) {
-        const diffLaps = getDifferingLaps(courseData.elements, laps);
-        // Build full-route adjacency set
-        const fullAdj = new Set<string>();
-        for (let j = 0; j < buoys.length; j++) {
-          fullAdj.add(`${buoys[j].id}->${buoys[(j + 1) % buoys.length].id}`);
-        }
-        for (const dl of diffLaps) {
-          const lapBuoys = getBuoysForLap(buoys, dl.lap);
-          const n = lapBuoys.length;
-          if (n < 2) continue;
-          for (let j = 0; j < n; j++) {
-            const a = lapBuoys[j];
-            const b = lapBuoys[(j + 1) % n];
-            const sameSides =
-              getBuoySideForLap(a.metadata, dl.lap) === getBuoySide(a.metadata) &&
-              getBuoySideForLap(b.metadata, dl.lap) === getBuoySide(b.metadata);
-            if (sameSides && fullAdj.has(`${a.id}->${b.id}`)) continue;
-            const prevA = lapBuoys[(j - 1 + n) % n];
-            const nextB = lapBuoys[(j + 2) % n];
-            const aSide = getBuoySideForLap(a.metadata, dl.lap);
-            const aPt = { lat: a.lat, lng: a.lng };
-            const aArc = aSide === "directional" ? [aPt]
-              : arcAroundBuoy(aPt, computeBearing(prevA, b), aSide);
-            const bSide = getBuoySideForLap(b.metadata, dl.lap);
-            const bPt = { lat: b.lat, lng: b.lng };
-            const bArc = bSide === "directional" ? [bPt]
-              : arcAroundBuoy(bPt, computeBearing(a, nextB), bSide);
-            new google.maps.Polyline({
-              path: [...aArc, ...bArc],
-              geodesic: true,
-              strokeColor: dl.color,
-              strokeOpacity: 0.8,
-              strokeWeight: 4,
-              map,
-            });
-            // Arrow for shortcut
-            new google.maps.Polyline({
-              path: [aPt, bPt],
-              geodesic: true,
-              strokeOpacity: 0,
-              strokeWeight: 0,
-              zIndex: 10,
-              icons: [{
-                icon: {
-                  path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                  scale: 5,
-                  fillColor: dl.color,
-                  fillOpacity: 1,
-                  strokeColor: "#FFFFFF",
-                  strokeWeight: 2,
-                },
-                offset: "50%",
-                repeat: "0",
-              }],
-              map,
-            });
-          }
-        }
-      }
-    }
-
-    // Start → first buoy arc entry point (solid orange)
-    if (parts.start && buoys.length >= 1) {
-      const target = loopEntryPoint ?? { lat: buoys[0].lat, lng: buoys[0].lng };
-      new google.maps.Polyline({
-        path: [
-          { lat: parts.start.lat, lng: parts.start.lng },
-          target,
-        ],
-        geodesic: true,
-        strokeColor: "#F97316",
-        strokeOpacity: 0.8,
-        strokeWeight: 4,
-        zIndex: 1,
-        map,
-      });
-      // Direction arrow for start → B1
-      new google.maps.Polyline({
-        path: [
-          { lat: parts.start.lat, lng: parts.start.lng },
-          { lat: buoys[0].lat, lng: buoys[0].lng },
-        ],
-        geodesic: true,
-        strokeOpacity: 0,
-        strokeWeight: 0,
-        zIndex: 10,
-        icons: [{
-          icon: {
-            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 5,
-            fillColor: "#F97316",
-            fillOpacity: 1,
-            strokeColor: "#FFFFFF",
-            strokeWeight: 2,
-          },
-          offset: "50%",
-          repeat: "0",
-        }],
-        map,
-      });
+      addArrows(l);
     }
 
     // Dashed entry: shore_entry → start (green, no arrow — walk/approach)
@@ -334,48 +200,6 @@ export function ShareView({ courseData, isPrint, token, flyoverUrl }: Props) {
             repeat: "15px",
           },
         ],
-        map,
-      });
-    }
-
-    // Last buoy arc exit point → finish (solid orange)
-    const finishMid = getFinishMidpoint(parts);
-    if (finishMid && buoys.length > 0) {
-      const source = loopExitPoint ?? { lat: buoys[buoys.length - 1].lat, lng: buoys[buoys.length - 1].lng };
-      new google.maps.Polyline({
-        path: [
-          source,
-          { lat: finishMid.lat, lng: finishMid.lng },
-        ],
-        geodesic: true,
-        strokeColor: "#F97316",
-        strokeOpacity: 0.8,
-        strokeWeight: 4,
-        zIndex: 1,
-        map,
-      });
-      // Direction arrow for Bn → finish
-      new google.maps.Polyline({
-        path: [
-          { lat: buoys[buoys.length - 1].lat, lng: buoys[buoys.length - 1].lng },
-          { lat: finishMid.lat, lng: finishMid.lng },
-        ],
-        geodesic: true,
-        strokeOpacity: 0,
-        strokeWeight: 0,
-        zIndex: 10,
-        icons: [{
-          icon: {
-            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 5,
-            fillColor: "#F97316",
-            fillOpacity: 1,
-            strokeColor: "#FFFFFF",
-            strokeWeight: 2,
-          },
-          offset: "50%",
-          repeat: "0",
-        }],
         map,
       });
     }
