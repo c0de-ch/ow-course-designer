@@ -100,6 +100,7 @@ model Course {
   user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   elements  CourseElement[]
   snapshots CourseSnapshot[]
+  flyoverRenders FlyoverRender[]
 
   @@index([userId, updatedAt(sort: Desc)])
 }
@@ -131,4 +132,25 @@ model CourseSnapshot {
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@index([courseId])
+}
+
+/// A flyover video rendered on the server: queued, rendering, done or failed
+model FlyoverRender {
+  id        String   @id @default(cuid())
+  courseId  String
+  userId    String
+  status    String   @default("queued")
+  /// 0 to 1 while rendering
+  progress  Float    @default(0)
+  /// Flyover speed (1 = the default duration for the course)
+  speed     Float    @default(1)
+  error     String?
+  /// The MP4 in data/flyovers once done
+  filename  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, createdAt])
 }

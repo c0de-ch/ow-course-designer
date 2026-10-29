@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FlyoverModal } from "./FlyoverModal";
 import { ExportModal } from "./ExportModal";
 import { IconClose, IconDownload, IconLink, IconVideo } from "@/components/ui/icons";
@@ -19,7 +19,15 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
   const [showFlyover, setShowFlyover] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [hasFlyover, setHasFlyover] = useState(false);
-  const flyoverBlobRef = useRef<Blob | null>(null);
+  /** The course's latest flyover video, rendered on the server; attached to share links */
+  const flyoverUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/courses/${courseId}/flyover/render`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((job) => { if (job?.status === "done" && job.url) handleVideoReady(job.url); })
+      .catch(() => {});
+  }, [courseId]);
 
   async function handleShare() {
     setShowShareModal(true);
@@ -29,21 +37,8 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
     setShareStep("Creating share link...");
 
     try {
-      // If a flyover video was recorded, upload it first
-      let flyoverUrl: string | undefined;
-      if (flyoverBlobRef.current) {
-        setShareStep("Uploading flyover video...");
-        const formData = new FormData();
-        formData.append("video", flyoverBlobRef.current, "flyover.webm");
-        const uploadRes = await fetch(`/api/courses/${courseId}/flyover`, {
-          method: "POST",
-          body: formData,
-        });
-        if (uploadRes.ok) {
-          const uploadData = await uploadRes.json();
-          flyoverUrl = uploadData.url;
-        }
-      }
+      // The flyover video is already on the server once rendered
+      const flyoverUrl = flyoverUrlRef.current ?? undefined;
 
       setShareStep("Generating snapshot...");
       const shareBody: Record<string, string> = {};
@@ -93,8 +88,8 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
     setTimeout(() => setCopying(false), 2000);
   }
 
-  function handleVideoReady(blob: Blob) {
-    flyoverBlobRef.current = blob;
+  function handleVideoReady(url: string) {
+    flyoverUrlRef.current = url;
     setHasFlyover(true);
   }
 
@@ -114,7 +109,7 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
 
         <button
           onClick={() => setShowFlyover(true)}
-          aria-label={hasFlyover ? "Preview or re-record flyover video (recording ready)" : "Record a flyover video"}
+          aria-label={hasFlyover ? "Preview the flyover or create a new video (video ready)" : "Preview the flyover or create a video"}
           className="btn btn-sm h-9 btn-ghost justify-start gap-3 w-full font-normal transition-all duration-150"
         >
           <span className="w-6 flex justify-center" aria-hidden="true"><IconVideo /></span>
@@ -141,6 +136,7 @@ export function ExportPanel({ courseId }: ExportPanelProps) {
 
       {showFlyover && (
         <FlyoverModal
+          courseId={courseId}
           onClose={() => setShowFlyover(false)}
           onVideoReady={handleVideoReady}
         />
