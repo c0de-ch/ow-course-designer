@@ -7,6 +7,10 @@ export interface CameraFrame {
   tilt: number;
   zoom: number;
   swimmerPos: google.maps.LatLngLiteral;
+  /** Share of the swim covered at this frame, 0 at the start to 1 at the finish */
+  fraction: number;
+  /** Lap being swum: 0 on the way from the start to the first buoy, then 1…laps */
+  lap: number;
 }
 
 function toRad(deg: number): number {
@@ -193,15 +197,24 @@ export function buildCameraPath(
     return totalDist;
   }
 
+  /** 0 before lap 1 starts, then the lap whose stretch holds this distance */
+  function lapAt(dist: number): number {
+    if (lapDistRanges.length === 0 || dist < lapDistRanges[0].start) return 0;
+    const i = lapDistRanges.findIndex((r) => dist < r.end);
+    return i < 0 ? lapDistRanges.length : i + 1;
+  }
+
   // Generate frames
   const totalFrames = Math.floor(durationSec * fps);
   const rawHeadings: number[] = [];
   const positions: LatLng[] = [];
+  const distances: number[] = [];
 
   for (let f = 0; f < totalFrames; f++) {
     // t goes from 0 to 1 inclusive so the last frame reaches the finish
     const t = totalFrames > 1 ? f / (totalFrames - 1) : 0;
     const targetDist = timeToDistance(Math.min(t, 1));
+    distances.push(targetDist);
 
     // Find segment — default to last segment if not found
     let segIdx = cumDist.length - 2;
@@ -249,6 +262,8 @@ export function buildCameraPath(
       tilt: TILT,
       zoom: ZOOM,
       swimmerPos: { lat: positions[f].lat, lng: positions[f].lng },
+      fraction: distances[f] / totalDist,
+      lap: lapAt(distances[f]),
     });
   }
 
