@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useCourseStore, CourseData, getRaceTotalKm, getRouteParts, getBuoyNumbers } from "@/store/courseStore";
 import { buildRouteLines, ROUTE_COLOR } from "@/lib/route-geometry";
+import { distanceLabel, overlayStream, type DistanceLabel } from "@/lib/flyover/distanceOverlay";
 import { getMarkerSvg } from "./markers/markerIcons";
 import { buildCameraPath, type CameraFrame } from "@/lib/flyover/cameraPath";
 import { getLoadedPublicConfig } from "@/lib/public-config";
@@ -55,6 +56,15 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
   const round5 = (v: number) => Math.round(v / 5) * 5;
   const baseDuration = Math.max(10, Math.min(120, round5(totalKm * 1000 * 0.06)));
   const [speed, setSpeed] = useState(1);
+  const laps = courseData.laps ?? 1;
+  /** The swum-distance counter while the flyover plays (top bar, map, video) */
+  const [swum, setSwum] = useState<DistanceLabel | null>(null);
+  const swumRef = useRef<DistanceLabel | null>(null);
+  const showSwum = useCallback((frame: CameraFrame | null) => {
+    const label = frame ? distanceLabel(frame, totalKm, laps) : null;
+    swumRef.current = label;
+    setSwum(label);
+  }, [totalKm, laps]);
   const duration = Math.max(3, Math.round(baseDuration / speed));
 
   // Initialize map — google.maps is already loaded by DesignerCanvas
@@ -341,15 +351,17 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
           map.setZoom(f.zoom);
         }
         moveSwimmer(f.swimmerPos);
+        showSwum(f);
         setProgress(i / frames.length);
       }
       await new Promise((r) => requestAnimationFrame(r));
     }
     setProgress(1);
     hideSwimmer();
+    showSwum(null);
     setStatusMsg("Preview complete");
     if (!abortRef.current) setStatus("idle");
-  }, [moveSwimmer, hideSwimmer]);
+  }, [moveSwimmer, hideSwimmer, showSwum]);
 
   const handleRecord = useCallback(async () => {
     const map = mapRef.current;
@@ -373,7 +385,9 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
     try {
       const fps = 30;
       const frames = framesRef.current;
-      const stream = canvas.captureStream(fps);
+      // The map canvas with the swum-distance badge drawn over each frame
+      const overlay = await overlayStream(canvas, fps, () => swumRef.current);
+      const stream = overlay.stream;
 
       const codecs = [
         "video/webm;codecs=vp9",
@@ -414,6 +428,7 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
           map.setZoom(f.zoom);
         }
         moveSwimmer(f.swimmerPos);
+        showSwum(f);
 
         // Wait for tiles
         await new Promise<void>((resolve) => {
@@ -437,10 +452,12 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
         }
       }
 
-      hideSwimmer();
       setStatusMsg("Finalizing video...");
       recorder.stop();
       await stopped;
+      overlay.stop();
+      hideSwimmer();
+      showSwum(null);
 
       const rawBlob = new Blob(chunks, { type: mimeType });
 
@@ -465,8 +482,9 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
     } catch (err) {
       setError((err as Error).message);
       setStatus("idle");
+      showSwum(null);
     }
-  }, [moveSwimmer, hideSwimmer]);
+  }, [moveSwimmer, hideSwimmer, showSwum]);
 
   function handleDownload() {
     if (!videoUrl) return;
@@ -494,6 +512,13 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
           <span className="text-xs text-base-content/45 truncate flex-1">
             {statusMsg}
           </span>
+          {swum && (
+            <span className="flex items-baseline gap-2 tabular-nums" aria-live="off">
+              <span className="text-xs text-base-content/55">Swum</span>
+              <span className="text-lg font-semibold">{swum.distance}</span>
+              <span className="text-xs text-base-content/55">{swum.detail}</span>
+            </span>
+          )}
           <button onClick={handleClose} className="btn btn-sm btn-ghost btn-circle text-base-content/40 hover:text-base-content">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
@@ -522,6 +547,14 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
           {!mapReady && (
             <div className="absolute inset-0 flex items-center justify-center bg-base-200">
               <span className="loading loading-spinner loading-lg" />
+            </div>
+          )}
+
+          {/* Swum distance while playing; the recording draws the same badge into the video */}
+          {busy && swum && (
+            <div className="absolute bottom-6 left-6 z-10 rounded-2xl bg-[#0C3440]/70 px-4 py-3 text-white pointer-events-none tabular-nums">
+              <div className="text-3xl font-bold leading-none">{swum.distance}</div>
+              <div className="mt-1.5 text-sm text-white/80">{swum.detail}</div>
             </div>
           )}
 
