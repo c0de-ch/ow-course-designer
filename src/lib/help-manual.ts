@@ -13,7 +13,7 @@ const manual: ManualEntry[] = [
 3. See live distance calculations
 4. Export your course as PDF, PNG, GPX, or KML
 5. Share your course with others via a public link
-6. Record flyover videos of your course`,
+6. Create flyover videos of your course`,
   },
   {
     keywords: ["create", "new", "course", "start", "begin"],
@@ -129,9 +129,9 @@ Use rescue zones to mark safety boat positions or emergency meeting points.`,
     answer: `Flyover videos let you create an animated tour of your course:
 
 1. Under **Share & export** in the left sidebar, click **"Flyover Video"**
-2. Click to open the flyover modal
-3. The video is recorded by animating the map camera along your route
-4. Once recorded, you can upload it to attach to your shared course link
+2. Choose a speed and click **Preview** to watch the camera swim the route, with the distance swum counting up
+3. Click **Create video**: the server renders an MP4 of the saved course in the background. You can close the window and keep working; the progress shows when you open it again
+4. When it is ready, click **Download MP4**. The next share link you create includes the video
 5. Viewers of the shared link can watch the flyover video`,
   },
   {

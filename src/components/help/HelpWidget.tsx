@@ -23,7 +23,8 @@ export function HelpWidget() {
   // Print views (?print=1) are captured for PDF/PNG exports: no help button there
   const [isPrintView, setIsPrintView] = useState(false);
   useEffect(() => {
-    setIsPrintView(new URLSearchParams(window.location.search).has("print"));
+    // ...nor on the page flyover videos are rendered from
+    setIsPrintView(new URLSearchParams(window.location.search).has("print") || window.location.pathname.startsWith("/flyover-render/"));
   }, [pathname]);
 
   useEffect(() => {

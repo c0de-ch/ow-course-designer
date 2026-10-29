@@ -1,71 +1,60 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useCourseStore, CourseData, getRaceTotalKm, getRouteParts, getBuoyNumbers } from "@/store/courseStore";
-import { buildRouteLines, ROUTE_COLOR } from "@/lib/route-geometry";
-import { distanceLabel, overlayStream, type DistanceLabel } from "@/lib/flyover/distanceOverlay";
-import { getMarkerSvg } from "./markers/markerIcons";
-import { buildCameraPath, type CameraFrame } from "@/lib/flyover/cameraPath";
+import { useCourseStore, CourseData, getRaceTotalKm } from "@/store/courseStore";
+import { createFlyoverScene, type FlyoverScene } from "@/lib/flyover/scene";
+import { distanceLabel, type DistanceLabel } from "@/lib/flyover/distanceOverlay";
+import { buildCameraPath, flyoverDurationSec, FLYOVER_SPEEDS, type CameraFrame } from "@/lib/flyover/cameraPath";
 import { getLoadedPublicConfig } from "@/lib/public-config";
-
-// Swimmer marker: an orange dot with a white ring and a light halo. On a
-// vector map it is a map symbol, because the recording captures only the map
-// canvas; on a raster map (no recording) it is an HTML overlay, which redraws
-// cleanly while the camera moves.
-const SWIMMER_COLOR = "#F97316";
-const TRAIL_POINTS = 45;
-const SWIMMER_DOT_CSS =
-  "position:absolute;transform:translate(-50%,-50%);pointer-events:none;display:none;" +
-  `width:22px;height:22px;border-radius:50%;background:${SWIMMER_COLOR};border:3px solid #fff;` +
-  "box-shadow:0 0 0 9px rgba(255,255,255,0.35),0 2px 6px rgba(0,0,0,0.5);";
 
 interface FlyoverModalProps {
   onClose: () => void;
   courseDataProp?: CourseData;
-  onVideoReady?: (blob: Blob) => void;
+  /** The course's id: offers "Create video" (rendered on the server) for its owner */
+  courseId?: string;
+  /** Called with the video's URL once a server render is done */
+  onVideoReady?: (url: string) => void;
 }
 
-const SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
+/** A flyover video rendered on the server (GET/POST /api/courses/[id]/flyover/render) */
+interface RenderJob {
+  id: string;
+  status: "queued" | "rendering" | "done" | "failed";
+  progress: number;
+  speed: number;
+  error: string | null;
+  url: string | null;
+}
 
-export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverModalProps) {
+export function FlyoverModal({ onClose, courseDataProp, courseId, onVideoReady }: FlyoverModalProps) {
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
+  const sceneRef = useRef<FlyoverScene | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [status, setStatus] = useState<"idle" | "previewing" | "recording" | "done">("idle");
+  const [status, setStatus] = useState<"idle" | "previewing">("idle");
   const [progress, setProgress] = useState(0);
   const [statusMsg, setStatusMsg] = useState("Initializing map...");
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [job, setJob] = useState<RenderJob | null>(null);
+  const isDirty = useCourseStore((s) => s.isDirty);
   const [error, setError] = useState<string | null>(null);
   const framesRef = useRef<CameraFrame[]>([]);
   const abortRef = useRef(false);
-  const swimmerTrailRef = useRef<google.maps.Polyline | null>(null);
-  const swimmerDotRef = useRef<google.maps.Circle | null>(null);
-  const swimmerHaloRef = useRef<google.maps.Circle | null>(null);
-  /** The wake's points, newest last; handed to the line whole on every frame */
-  const trailPointsRef = useRef<google.maps.LatLng[]>([]);
-  const swimmerOverlayRef = useRef<google.maps.OverlayView | null>(null);
-  const swimmerDivRef = useRef<HTMLDivElement | null>(null);
-  const swimmerPosRef = useRef<google.maps.LatLng | null>(null);
 
   const storeCourseData = useCourseStore((s) => s.courseData);
   const courseData = courseDataProp ?? storeCourseData;
   const mapId = getLoadedPublicConfig().mapId || undefined;
 
-  // Auto-compute route distance and duration (~6s/100m, clamped 10-120s)
+  // Route distance and flyover length (~6 s/100 m, divided by the speed)
   const { totalKm, avgLoopKm } = getRaceTotalKm(courseData);
-  const round5 = (v: number) => Math.round(v / 5) * 5;
-  const baseDuration = Math.max(10, Math.min(120, round5(totalKm * 1000 * 0.06)));
   const [speed, setSpeed] = useState(1);
+  const duration = flyoverDurationSec(totalKm, speed);
   const laps = courseData.laps ?? 1;
   /** The swum-distance counter while the flyover plays (top bar, map, video) */
   const [swum, setSwum] = useState<DistanceLabel | null>(null);
-  const swumRef = useRef<DistanceLabel | null>(null);
   const showSwum = useCallback((frame: CameraFrame | null) => {
     const label = frame ? distanceLabel(frame, totalKm, laps) : null;
-    swumRef.current = label;
     setSwum(label);
   }, [totalKm, laps]);
-  const duration = Math.max(3, Math.round(baseDuration / speed));
 
   // Initialize map — google.maps is already loaded by DesignerCanvas
   useEffect(() => {
@@ -74,199 +63,9 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
       setError("Google Maps not loaded. Open the designer first.");
       return;
     }
-
-    // All visible elements (for markers) and route elements (for polyline/path)
-    const buoyNumbers = getBuoyNumbers(courseData.elements);
-    const visibleElements = courseData.elements
-      .filter((el) => el.type !== "rescue_zone")
-      .sort((a, b) => a.order - b.order);
-    const routeElements = visibleElements.filter((el) => el.type !== "feeding_platform");
-
-    // Center on start element, or first element, or lake
-    const startEl = routeElements.find((el) => el.type === "start");
-    const center = startEl
-      ? { lat: startEl.lat, lng: startEl.lng }
-      : routeElements.length > 0
-        ? { lat: routeElements[0].lat, lng: routeElements[0].lng }
-        : courseData.lakeLatLng
-          ? (() => {
-              const [lat, lng] = courseData.lakeLatLng!.split(",").map(Number);
-              return { lat, lng };
-            })()
-          : { lat: 46.8182, lng: 8.2275 };
-
-    const opts: google.maps.MapOptions = {
-      center,
-      zoom: courseData.zoomLevel ?? 14,
-      mapTypeId: "satellite",
-      disableDefaultUI: true,
-    };
-    if (mapId && mapId.length > 5) {
-      opts.mapId = mapId;
-    }
-
-    const map = new google.maps.Map(mapDivRef.current, opts);
-    mapRef.current = map;
-
-    // Fit bounds to all visible elements with 500m padding
-    if (visibleElements.length >= 2) {
-      const bounds = new google.maps.LatLngBounds();
-      visibleElements.forEach((el) => bounds.extend({ lat: el.lat, lng: el.lng }));
-
-      // Extend bounds by ~500m on each side
-      // 500m ≈ 0.0045° latitude, longitude varies by cos(lat)
-      const ne = bounds.getNorthEast();
-      const sw = bounds.getSouthWest();
-      const latPad = 0.0045; // ~500m
-      const lngPad = 0.0045 / Math.cos((ne.lat() + sw.lat()) / 2 * Math.PI / 180);
-      bounds.extend({ lat: ne.lat() + latPad, lng: ne.lng() + lngPad });
-      bounds.extend({ lat: sw.lat() - latPad, lng: sw.lng() - lngPad });
-
-      map.fitBounds(bounds);
-    }
-
-    // Draw the scene once, when the map is first ready. Not on every "idle":
-    // the map goes idle again and again while the camera flies, and each time
-    // a new swimmer (and another copy of the route and markers) was drawn
-    // while the old swimmer stayed behind as a white dot.
-    google.maps.event.addListenerOnce(map, "idle", () => {
+    mapRef.current = createFlyoverScene(mapDivRef.current, courseData, mapId, (scene) => {
+      sceneRef.current = scene;
       setMapReady(true);
-
-      // Draw route polylines (solid buoy loop + dashed entry/exit)
-      const parts = getRouteParts(courseData.elements);
-      const route = buildRouteLines(courseData.elements, courseData.laps ?? 1);
-
-      for (const l of [route.loop, ...route.lapSegments]) {
-        if (!l) continue;
-        new google.maps.Polyline({
-          path: l.path,
-          geodesic: true,
-          strokeColor: l.color,
-          strokeOpacity: 0.8,
-          strokeWeight: 4,
-          map,
-        });
-      }
-
-      for (const l of [route.startLine, route.finishLine]) {
-        if (!l) continue;
-        new google.maps.Polyline({
-          path: l.path,
-          geodesic: true,
-          strokeColor: ROUTE_COLOR,
-          strokeOpacity: 0.6,
-          strokeWeight: 3,
-          icons: [{
-            icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 },
-            offset: "0",
-            repeat: "15px",
-          }],
-          map,
-        });
-      }
-
-      // Finish funnel connecting line
-      if (parts.finishFunnelLeft && parts.finishFunnelRight) {
-        new google.maps.Polyline({
-          path: [
-            { lat: parts.finishFunnelLeft.lat, lng: parts.finishFunnelLeft.lng },
-            { lat: parts.finishFunnelRight.lat, lng: parts.finishFunnelRight.lng },
-          ],
-          geodesic: true,
-          strokeColor: "#EF4444",
-          strokeOpacity: 0.9,
-          strokeWeight: 3,
-          map,
-        });
-      }
-
-      // Draw markers (all visible elements including feeding platforms)
-      visibleElements.forEach((el) => {
-        const svgHtml = getMarkerSvg(el.type, false, el.metadata, buoyNumbers.get(el.id));
-        const overlay = new google.maps.OverlayView();
-        overlay.onAdd = function () {
-          const div = document.createElement("div");
-          div.style.cssText =
-            "position:absolute;transform:translate(-50%,-50%);pointer-events:none;";
-          div.innerHTML = svgHtml;
-          this.getPanes()!.overlayLayer.appendChild(div);
-          (this as unknown as { _div: HTMLDivElement })._div = div;
-        };
-        overlay.draw = function () {
-          const pt = this.getProjection().fromLatLngToDivPixel(
-            new google.maps.LatLng(el.lat, el.lng)
-          );
-          const div = (this as unknown as { _div: HTMLDivElement })._div;
-          if (pt && div) {
-            div.style.left = `${pt.x}px`;
-            div.style.top = `${pt.y}px`;
-          }
-        };
-        overlay.onRemove = function () {
-          const div = (this as unknown as { _div: HTMLDivElement })._div;
-          div?.parentNode?.removeChild(div);
-        };
-        overlay.setMap(map);
-      });
-
-      // Swimmer: a short wake line and an orange dot with a white ring and a
-      // light halo, drawn on the map (not as HTML) so they show in recordings.
-      // Sizes are in metres, about the old pixel size at the flyover's fixed
-      // zoom (18).
-      swimmerTrailRef.current = new google.maps.Polyline({
-        map,
-        visible: false,
-        geodesic: true,
-        strokeColor: SWIMMER_COLOR,
-        strokeOpacity: 0.6,
-        strokeWeight: 5,
-        zIndex: 900,
-      });
-      swimmerHaloRef.current = new google.maps.Circle({
-        map,
-        visible: false,
-        radius: 8,
-        fillColor: "#FFFFFF",
-        fillOpacity: 0.35,
-        strokeWeight: 0,
-        clickable: false,
-        zIndex: 901,
-      });
-      swimmerDotRef.current = new google.maps.Circle({
-        map,
-        visible: false,
-        radius: 4,
-        fillColor: SWIMMER_COLOR,
-        fillOpacity: 1,
-        strokeColor: "#FFFFFF",
-        strokeOpacity: 1,
-        strokeWeight: 3,
-        clickable: false,
-        zIndex: 902,
-      });
-
-      const swimmerOverlay = new google.maps.OverlayView();
-      swimmerOverlay.onAdd = function () {
-        const div = document.createElement("div");
-        div.style.cssText = SWIMMER_DOT_CSS;
-        this.getPanes()!.overlayLayer.appendChild(div);
-        swimmerDivRef.current = div;
-      };
-      swimmerOverlay.draw = function () {
-        if (!swimmerPosRef.current || !swimmerDivRef.current) return;
-        const pt = this.getProjection().fromLatLngToDivPixel(swimmerPosRef.current);
-        if (pt) {
-          swimmerDivRef.current.style.left = `${pt.x}px`;
-          swimmerDivRef.current.style.top = `${pt.y}px`;
-        }
-      };
-      swimmerOverlay.onRemove = function () {
-        swimmerDivRef.current?.parentNode?.removeChild(swimmerDivRef.current);
-        swimmerDivRef.current = null;
-      };
-      swimmerOverlay.setMap(map);
-      swimmerOverlayRef.current = swimmerOverlay;
-
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -285,42 +84,14 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, duration]);
 
-  const moveSwimmer = useCallback((pos: google.maps.LatLngLiteral) => {
-    const point = new google.maps.LatLng(pos.lat, pos.lng);
-    if (mapRef.current?.getRenderingType() !== google.maps.RenderingType.VECTOR) {
-      swimmerPosRef.current = point;
-      if (swimmerDivRef.current) swimmerDivRef.current.style.display = "block";
-      swimmerOverlayRef.current?.draw();
-      return;
-    }
-
-    // The wake: the whole path in one update per frame
-    const prev = trailPointsRef.current;
-    const points = [...prev.slice(-(TRAIL_POINTS - 1)), point];
-    trailPointsRef.current = points;
-    for (const shape of [swimmerTrailRef.current, swimmerHaloRef.current, swimmerDotRef.current]) {
-      if (shape && !shape.getVisible()) shape.setVisible(true);
-    }
-    swimmerTrailRef.current?.setPath(points);
-    swimmerHaloRef.current?.setCenter(point);
-    swimmerDotRef.current?.setCenter(point);
-  }, []);
-
-  const hideSwimmer = useCallback(() => {
-    swimmerTrailRef.current?.setVisible(false);
-    swimmerTrailRef.current?.setPath([]);
-    swimmerHaloRef.current?.setVisible(false);
-    swimmerDotRef.current?.setVisible(false);
-    trailPointsRef.current = [];
-    if (swimmerDivRef.current) swimmerDivRef.current.style.display = "none";
-  }, []);
+  const moveSwimmer = useCallback((pos: google.maps.LatLngLiteral) => sceneRef.current?.moveSwimmer(pos), []);
+  const hideSwimmer = useCallback(() => sceneRef.current?.hideSwimmer(), []);
 
   const handlePreview = useCallback(async () => {
     const map = mapRef.current;
     if (!map || framesRef.current.length === 0) return;
     abortRef.current = false;
     setStatus("previewing");
-    trailPointsRef.current = []; // start a fresh wake
     setProgress(0);
     setError(null);
     setStatusMsg("Previewing...");
@@ -363,145 +134,54 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
     if (!abortRef.current) setStatus("idle");
   }, [moveSwimmer, hideSwimmer, showSwum]);
 
-  const handleRecord = useCallback(async () => {
-    const map = mapRef.current;
-    if (!map || framesRef.current.length === 0) return;
-    setStatus("recording");
-    trailPointsRef.current = []; // start a fresh wake
-    setProgress(0);
-    setError(null);
-    setStatusMsg("Preparing recording...");
-
-    const canvas = map.getDiv().querySelector("canvas");
-    if (!canvas) {
-      setError(
-        "Cannot access map canvas. Recording requires a Vector Map ID. " +
-          "Preview still works — use screen recording software to capture it."
-      );
-      setStatus("idle");
-      return;
-    }
-
-    try {
-      const fps = 30;
-      const frames = framesRef.current;
-      // The map canvas with the swum-distance badge drawn over each frame
-      const overlay = await overlayStream(canvas, fps, () => swumRef.current);
-      const stream = overlay.stream;
-
-      const codecs = [
-        "video/webm;codecs=vp9",
-        "video/webm;codecs=vp8",
-        "video/webm",
-      ];
-      const mimeType =
-        codecs.find((c) => MediaRecorder.isTypeSupported(c)) ?? "video/webm";
-      const recorder = new MediaRecorder(stream, {
-        mimeType,
-        videoBitsPerSecond: 5_000_000,
-      });
-      const chunks: Blob[] = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-
-      const stopped = new Promise<void>((r) => {
-        recorder.onstop = () => r();
-      });
-
-      recorder.start(100);
-      setStatusMsg("Recording...");
-
-      for (let i = 0; i < frames.length; i++) {
-        if (abortRef.current) break;
-        const f = frames[i];
-        try {
-          map.moveCamera({
-            center: f.center,
-            heading: f.heading,
-            tilt: f.tilt,
-            zoom: f.zoom,
-          });
-        } catch {
-          map.setCenter(f.center);
-          map.setZoom(f.zoom);
-        }
-        moveSwimmer(f.swimmerPos);
-        showSwum(f);
-
-        // Wait for tiles
-        await new Promise<void>((resolve) => {
-          const done = () => {
-            google.maps.event.removeListener(listener);
-            clearTimeout(timer);
-            resolve();
-          };
-          const listener = map.addListener("tilesloaded", done);
-          // Give up after 300 ms, removing the listener so they don't pile up frame after frame
-          const timer = setTimeout(done, 300);
-        });
-
-        await new Promise((r) => setTimeout(r, 1000 / fps));
-        setProgress((i + 1) / frames.length);
-
-        if (i % 30 === 0) {
-          setStatusMsg(
-            `Recording... ${Math.round(((i + 1) / frames.length) * 100)}%`
-          );
-        }
-      }
-
-      setStatusMsg("Finalizing video...");
-      recorder.stop();
-      await stopped;
-      overlay.stop();
-      hideSwimmer();
-      showSwum(null);
-
-      const rawBlob = new Blob(chunks, { type: mimeType });
-
-      let finalBlob = rawBlob;
+  // The course's latest server render; polled while it is queued or rendering
+  useEffect(() => {
+    if (!courseId) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
       try {
-        const { default: fixWebmDuration } = await import(
-          "fix-webm-duration"
-        );
-        const durationMs = (frames.length / fps) * 1000;
-        finalBlob = await fixWebmDuration(rawBlob, durationMs, {
-          logger: false,
-        });
+        const res = await fetch(`/api/courses/${courseId}/flyover/render`);
+        const next: RenderJob | null = res.ok ? await res.json() : null;
+        if (stopped) return;
+        setJob(next);
+        if (next?.status === "done" && next.url) onVideoReady?.(next.url);
+        if (next && (next.status === "queued" || next.status === "rendering")) timer = setTimeout(poll, 2000);
       } catch {
-        // use raw blob
+        if (!stopped) timer = setTimeout(poll, 5000);
       }
+    };
+    void poll();
+    return () => { stopped = true; clearTimeout(timer); };
+  // Re-poll when a new render starts
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId, job?.id]);
 
-      const url = URL.createObjectURL(finalBlob);
-      setVideoUrl(url);
-      setStatus("done");
-      setStatusMsg("Recording complete!");
-      onVideoReady?.(finalBlob);
+  async function handleCreateVideo() {
+    if (!courseId) return;
+    setError(null);
+    try {
+      const res = await fetch(`/api/courses/${courseId}/flyover/render`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ speed }),
+      });
+      if (!res.ok) throw new Error(`The server refused the video (${res.status})`);
+      setJob(await res.json());
     } catch (err) {
       setError((err as Error).message);
-      setStatus("idle");
-      showSwum(null);
     }
-  }, [moveSwimmer, hideSwimmer, showSwum]);
-
-  function handleDownload() {
-    if (!videoUrl) return;
-    const a = document.createElement("a");
-    a.href = videoUrl;
-    a.download = `${courseData.name.replace(/[^a-z0-9]/gi, "_")}_flyover.webm`;
-    a.click();
   }
+
+  const rendering = job?.status === "queued" || job?.status === "rendering";
 
   function handleClose() {
     abortRef.current = true;
-    if (videoUrl) URL.revokeObjectURL(videoUrl);
     onClose();
   }
 
   const hasFrames = framesRef.current.length > 0;
-  const busy = status === "previewing" || status === "recording";
+  const busy = status === "previewing";
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -550,7 +230,7 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
             </div>
           )}
 
-          {/* Swum distance while playing; the recording draws the same badge into the video */}
+          {/* Swum distance while playing; server-rendered videos show the same badge */}
           {busy && swum && (
             <div className="absolute bottom-6 left-6 z-10 rounded-2xl bg-[#0C3440]/70 px-4 py-3 text-white pointer-events-none tabular-nums">
               <div className="text-3xl font-bold leading-none">{swum.distance}</div>
@@ -558,7 +238,7 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
             </div>
           )}
 
-          {/* Branding overlay (top-right) — hidden during preview/recording */}
+          {/* Branding overlay (top-right) — hidden during the preview */}
           {!busy && (courseData.raceLabel || courseData.raceLogo) && (
             <div className="absolute top-3 right-3 z-10 bg-white/80 backdrop-blur-sm rounded-lg p-2 max-w-[200px] pointer-events-none">
               {courseData.raceLogo && (
@@ -570,7 +250,7 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
             </div>
           )}
 
-          {/* Distance + laps overlay — hidden during preview/recording */}
+          {/* Distance + laps overlay — hidden during the preview */}
           {!busy && totalKm > 0 && (
             <div className="absolute bottom-3 right-28 z-10 bg-white/80 backdrop-blur-sm text-gray-900 px-5 py-3 rounded-lg text-right pointer-events-none shadow-lg">
               {(courseData.laps ?? 1) > 1 ? (
@@ -585,6 +265,30 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
           )}
         </div>
 
+        {/* Server-rendered video */}
+        {courseId && job && (
+          <div className="flex items-center gap-3 px-6 py-2 border-t border-base-200 text-sm" aria-live="polite">
+            {job.status === "queued" && <span className="text-base-content/60">Video queued, it starts shortly. You can close this window.</span>}
+            {job.status === "rendering" && (
+              <>
+                <span className="text-base-content/70 whitespace-nowrap">Creating video… {Math.round(job.progress * 100)}%</span>
+                <div className="flex-1 h-1.5 rounded-full bg-base-300 overflow-hidden">
+                  <div className="h-full bg-secondary transition-all" style={{ width: `${Math.round(job.progress * 100)}%` }} />
+                </div>
+                <span className="text-xs text-base-content/50 whitespace-nowrap">You can close this window</span>
+              </>
+            )}
+            {job.status === "done" && job.url && (
+              <>
+                <span className="text-success">Video ready ({job.speed}×)</span>
+                <div className="flex-1" />
+                <a href={job.url} download className="btn btn-sm btn-success">Download MP4</a>
+              </>
+            )}
+            {job.status === "failed" && <span className="text-error">The video could not be created: {job.error ?? "unknown error"}</span>}
+          </div>
+        )}
+
         {/* Controls */}
         <div className="flex items-center gap-3 px-6 py-4 border-t border-base-200">
           <label className="flex items-center gap-2 text-sm text-base-content/70">
@@ -596,7 +300,7 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
               className="select select-sm w-24"
               aria-label="Flyover speed"
             >
-              {SPEEDS.map((s) => (
+              {FLYOVER_SPEEDS.map((s) => (
                 <option key={s} value={s}>{s}×</option>
               ))}
             </select>
@@ -612,17 +316,14 @@ export function FlyoverModal({ onClose, courseDataProp, onVideoReady }: FlyoverM
             {status === "previewing" ? "Previewing..." : "Preview"}
           </button>
 
-          <button
-            onClick={handleRecord}
-            disabled={busy || !mapReady || !hasFrames}
-            className="btn btn-sm btn-secondary"
-          >
-            {status === "recording" ? "Recording..." : "Record"}
-          </button>
-
-          {status === "done" && (
-            <button onClick={handleDownload} className="btn btn-sm btn-success">
-              Download WebM
+          {courseId && (
+            <button
+              onClick={handleCreateVideo}
+              disabled={busy || rendering || !hasFrames || isDirty}
+              className="btn btn-sm btn-secondary"
+              title={isDirty ? "Wait for the course to be saved: the video shows the saved course" : "Renders an MP4 on the server; you can close this window meanwhile"}
+            >
+              Create video
             </button>
           )}
         </div>

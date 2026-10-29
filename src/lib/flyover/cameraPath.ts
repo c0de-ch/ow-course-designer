@@ -1,6 +1,16 @@
 import { haversineDistanceKm, LatLng } from "@/lib/haversine";
 import { CourseElement, getRouteParts, getLapRun, getStartLeg, getFinishLeg } from "@/store/courseStore";
 
+/** Flyover speeds offered (1 = the default length for the course) */
+export const FLYOVER_SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
+
+/** Flyover length in seconds: about 6 s per 100 m at speed 1 (10-120 s), divided by the speed */
+export function flyoverDurationSec(totalKm: number, speed: number): number {
+  const round5 = (v: number) => Math.round(v / 5) * 5;
+  const base = Math.max(10, Math.min(120, round5(totalKm * 1000 * 0.06)));
+  return Math.max(3, Math.round(base / speed));
+}
+
 export interface CameraFrame {
   center: google.maps.LatLngLiteral;
   heading: number;

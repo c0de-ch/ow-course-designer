@@ -101,6 +101,23 @@ async function servePublicOriginLocally(
   });
 }
 
+/**
+ * Opens an app URL (on the internal origin) in the page under the public
+ * hostname when one is configured, so the Google Maps key accepts it; the
+ * requests are still served by this server.
+ */
+export async function gotoAppPage(page: import("puppeteer").Page, url: string) {
+  const internalOrigin = internalAppUrl();
+  const publicOrigin = runtimeEnv("APP_URL")?.replace(/\/+$/, "");
+  let target = url;
+  if (publicOrigin && publicOrigin !== internalOrigin && url.startsWith(internalOrigin)) {
+    await servePublicOriginLocally(page, publicOrigin, internalOrigin);
+    target = publicOrigin + url.slice(internalOrigin.length);
+  }
+  await page.goto(target, { waitUntil: "networkidle0", timeout: 30000 });
+  return { publicOrigin, internalOrigin };
+}
+
 async function renderPage<T>(
   printUrl: string,
   capture: (page: import("puppeteer").Page) => Promise<T>
@@ -109,15 +126,7 @@ async function renderPage<T>(
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900 });
 
-    const internalOrigin = internalAppUrl();
-    const publicOrigin = runtimeEnv("APP_URL")?.replace(/\/+$/, "");
-    let target = printUrl;
-    if (publicOrigin && publicOrigin !== internalOrigin && printUrl.startsWith(internalOrigin)) {
-      await servePublicOriginLocally(page, publicOrigin, internalOrigin);
-      target = publicOrigin + printUrl.slice(internalOrigin.length);
-    }
-
-    await page.goto(target, { waitUntil: "networkidle0", timeout: 30000 });
+    const { publicOrigin, internalOrigin } = await gotoAppPage(page, printUrl);
     await page.waitForSelector("#map-ready, #map-error", { timeout: 20000 });
     // Google reports a rejected key shortly after the first tiles; give it a moment
     await new Promise((resolve) => setTimeout(resolve, 1500));

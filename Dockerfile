@@ -38,9 +38,14 @@ WORKDIR /app
 LABEL org.opencontainers.image.source="https://github.com/c0de-ch/ow-course-designer"
 LABEL org.opencontainers.image.description="Open-water swim course designer"
 
-# Install Chromium for Puppeteer
+# Chromium for Puppeteer (PDF/PNG exports, flyover videos); ffmpeg encodes the
+# videos; Mesa (llvmpipe) gives Chromium software WebGL for the 3D map
 RUN apk add --no-cache \
     chromium \
+    ffmpeg \
+    mesa-dri-gallium \
+    mesa-egl \
+    mesa-gles \
     nss \
     freetype \
     harfbuzz \

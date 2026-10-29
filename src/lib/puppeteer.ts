@@ -24,16 +24,28 @@ export function findBrowserExecutable(): string | undefined {
   return undefined;
 }
 
-export async function launchBrowser() {
+export async function launchBrowser(extraArgs: string[] = []) {
   const puppeteer = (await import("puppeteer")).default;
   const executablePath = findBrowserExecutable();
 
   return puppeteer.launch({
     headless: true,
     executablePath,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    args: ["--no-sandbox", "--disable-setuid-sandbox", ...extraArgs],
   });
 }
+
+/**
+ * Software WebGL, so the vector map (tilt and heading) renders without a GPU:
+ * ANGLE on Mesa's llvmpipe through EGL (mesa-egl, mesa-gles and
+ * mesa-dri-gallium in the image; Alpine's Chromium has no SwiftShader).
+ * PUPPETEER_WEBGL_ARGS (space-separated) overrides it.
+ */
+export const WEBGL_ARGS = process.env.PUPPETEER_WEBGL_ARGS?.split(/\s+/).filter(Boolean) ?? [
+  "--use-gl=angle",
+  "--use-angle=gles-egl",
+  "--ignore-gpu-blocklist",
+];
 
 export class ExportQueueTimeoutError extends Error {
   constructor() {
@@ -80,11 +92,12 @@ function releaseExportSlot() {
  * cannot exhaust server memory. Throws ExportQueueTimeoutError on saturation.
  */
 export async function withBrowser<T>(
-  run: (browser: import("puppeteer").Browser) => Promise<T>
+  run: (browser: import("puppeteer").Browser) => Promise<T>,
+  extraArgs: string[] = []
 ): Promise<T> {
   await acquireExportSlot();
   try {
-    const browser = await launchBrowser();
+    const browser = await launchBrowser(extraArgs);
     try {
       return await run(browser);
     } finally {
